@@ -99,6 +99,7 @@ def page3():
         st.markdown('## Monthly Work Log')
 
         df = load_data()
+        df = df[df['workstream_name'].isin(workstreams_list_delivery)].copy()
 
         months = sorted(df['month_start'].dropna().unique(), reverse=True)
         month_labels = {m: f"{pd.Timestamp(m).strftime('%B %Y')}" for m in months}
