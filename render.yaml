@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: project-management
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: solara run app.py --port=10000 --host=0.0.0.0 --no-open
+    envVars:
+      - key: APPS_SCRIPT_URL
+        sync: false  # set this in Render dashboard later
