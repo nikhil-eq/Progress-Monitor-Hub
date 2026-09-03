@@ -202,11 +202,14 @@ def daily_entry_form():
         st.selectbox('Stage', options=['Exclusions Delineation', 'CEAs Delineation', 'Peer Review'],
                      index=None, placeholder='Select stage', key='stage')
 
-    elif workstream in ['Restratification - HIR', 'Restratification - NFMR', 'Restratification - Regen Check']:
+    elif workstream in ['Restratification - HIR', 'Restratification - NFMR']:
         st.selectbox('Stage', options=["Iterative Failing Grid Removal", "0.2ha Compilance", "1.5km Radius Check",
                                        "Model Point Allocation", "Strata File Update",
                                        "Topology / Geometry Check", "Peer Review"],
                      index=None, placeholder='Select stage', key='stage')
+    elif workstream in ['Restratification - Regen Check']:
+        st.selectbox('Stage', options = ['Preliminary Processing', 'Biomass Processing', 'Restrat Processing'], 
+                    index = None, placeholder = 'Select stage', key = 'stage')
 
     elif workstream in ['AD Survey Packages']:
         st.selectbox('Stage', options=["Track Digitisation", "Point / Plot Allocation", "Maps Preparation",
