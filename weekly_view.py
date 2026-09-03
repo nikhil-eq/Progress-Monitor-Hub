@@ -150,7 +150,7 @@ def get_workstream_rnd_summary(df: pd.DataFrame) -> pd.DataFrame:
     rnd_explaination entries.
     """
     scoped = df[df['workstream_name'].isin(rnd_list)].copy()
-    scoped = df[~df['stage']].isin(['Debugging', 'Meetings'])
+    scoped = df[~df['stage']].isin({'Meetings', 'Debugging'})
     scoped['stage'] = scoped['stage'].str.strip()
     scoped['rnd_explaination'] = scoped['rnd_explaination'].astype(str).str.strip()
 
