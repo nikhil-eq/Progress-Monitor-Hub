@@ -144,13 +144,9 @@ def get_paddock_summary(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def get_workstream_rnd_summary(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    One row per remaining R&D stage (excludes Paddock Mapping and Digitisation —
-    see get_paddock_summary for that). Detail column lists that stage's logged
-    rnd_explaination entries.
-    """
     scoped = df[df['workstream_name'].isin(rnd_list)].copy()
-    scoped = scoped[~scoped['stage'].isin({'Meetings', 'Debugging'})] 
+    scoped = scoped[~scoped['stage'].isin({'Meetings', 'Debugging'})]
+
     scoped['stage'] = scoped['stage'].str.strip()
     scoped['rnd_explaination'] = scoped['rnd_explaination'].astype(str).str.strip()
 
@@ -165,11 +161,14 @@ def get_workstream_rnd_summary(df: pd.DataFrame) -> pd.DataFrame:
     }
     scoped['stage'] = scoped['stage'].replace(stage_display_names)
 
+    # Guard: nothing left to summarize this week
+    if scoped.empty:
+        return pd.DataFrame(columns=['Workstream', 'Progress'])
+
     def build_row(group: pd.DataFrame) -> pd.Series:
         explanations = group['rnd_explaination'].dropna()
         explanations = explanations[explanations != '']
         detail = "\n".join(f"• {e}" for e in explanations) if not explanations.empty else "—"
-
         return pd.Series({
             'planned': group['project_name'].nunique(),
             'detail': detail,
@@ -183,10 +182,7 @@ def get_workstream_rnd_summary(df: pd.DataFrame) -> pd.DataFrame:
 
     summary = summary.sort_values('stage').reset_index(drop=True)
     summary = summary.drop(columns=['planned'])
-    summary = summary.rename(columns={
-        'stage': 'Workstream',
-        'detail': 'Progress',
-    })
+    summary = summary.rename(columns={'stage': 'Workstream', 'detail': 'Progress'})
     return summary
 
 
