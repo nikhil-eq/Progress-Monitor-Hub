@@ -27,7 +27,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.logo("https://github.com/nikhil-eq/comprehensive-project-management/blob/main/eq%20-%20white.png?raw=true", size = 'medium', )
-st.title('Progress Monitor Hub')
+st.title('EQ <> GC Progress Monitor Hub')
 
 pg = st.navigation([st.Page("daily_entry.py", title = 'Daily Log Entry'), 
                     st.Page("weekly_view.py", title = 'Weekly Progress'), 

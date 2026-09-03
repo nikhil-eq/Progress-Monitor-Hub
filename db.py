@@ -22,6 +22,7 @@ def load_data() -> pd.DataFrame:
     
     # ── same cleaning you already do ──
     df['date'] = pd.to_datetime(df.get('date'), errors='coerce')
+    df['date'] = df['date'].dt.tz_convert('Asia/Kolkata').dt.normalize().dt.tz_localize(None)
     for col in ['current_status', 'stage', 'workstream_name', 'project_name', 'user_name']:
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip()

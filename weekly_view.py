@@ -331,9 +331,12 @@ def page2():
         'latest_status': 'Current Status',
     })
 
-    with st.container():
-        st.markdown(f"**{len(result)}** entries for {st.session_state.selected_week_label}")
-        st.dataframe(result, use_container_width=True, height=min(900, 60 + 35 * len(result)))
+    if result.empty:
+        st.markdown('_No hours logged this week._')
+    else:
+        with st.container():
+            st.markdown(f"**{len(result)}** entries for {st.session_state.selected_week_label}")
+            st.dataframe(result, use_container_width=True, height=min(900, 60 + 35 * len(result)))
     
 
     with st.container(border=True, key = "weekly_view_card2"):
@@ -347,15 +350,24 @@ def page2():
             'all_projects': 'All Projects',
             'in_progress_projects': 'In Progress Projects',
         })
-        st.dataframe(ops_summary)
+        if ops_summary.empty:
+            st.markdown('_No hours logged this week._')
+        else:
+            st.dataframe(ops_summary)
 
         st.markdown("**WS1: Paddock Mapping and Digitisation**")
         paddock_summary = get_paddock_summary(week_df)
-        st.dataframe(paddock_summary)
+        if paddock_summary.empty:
+                st.markdown('_No hours logged this week._')
+        else:
+            st.dataframe(paddock_summary)
 
         st.markdown("**R&D Summary**")
         rnd_summary = get_workstream_rnd_summary(week_df)
-        st.dataframe(rnd_summary)
+        if rnd_summary.empty:
+            st.markdown('_No hours logged this week._')
+        else:
+            st.dataframe(rnd_summary)
 
     with st.container(border=True, key = "weekly_view_card3"):
         st.markdown("#### Team Bandwidth")
