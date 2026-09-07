@@ -29,7 +29,7 @@ workstreams_list_delivery = [
 
 rnd_list = [
     'Research and Development',
-    'Miscellaneous',
+    'Productivity & Enablement',
     'Paddock Mapping and Digitisation'
 ]
 
@@ -189,8 +189,12 @@ def get_workstream_rnd_summary(df: pd.DataFrame) -> pd.DataFrame:
 def get_user_workstream_hours(week_df: pd.DataFrame) -> pd.DataFrame:
     """
     Hours per (user, workstream) for the given week, across ALL workstreams
-    (no filtering to workstreams_list_delivery — Miscellaneous, R&D, etc. included).
+    (no filtering to workstreams_list_delivery — Productivity & Enablement, R&D, etc. included).
     """
+    week_df['time_spent'] = pd.to_numeric(
+                            week_df['time_spent'],
+                            errors='coerce'
+                        ).fillna(0)
     hours = (
         week_df.groupby(['user_name', 'workstream_name'], as_index=False)
                .agg(hours=('time_spent', 'sum'))
@@ -288,9 +292,34 @@ def page2():
 
         df = load_data()
 
-        weeks = sorted(df['week_start'].dropna().unique(), reverse=True)
-        week_labels = {w: f"Week of {pd.Timestamp(w).strftime('%d %b %Y')}" for w in weeks}
+        # Convert to datetime
+        df['week_start'] = pd.to_datetime(df['week_start'])
+
+        # Latest week first
+        weeks = sorted(
+            df['week_start'].dropna().unique(),
+            reverse=True
+        )
+
+        # Week number resets for each month
+        week_labels = {}
+
+        month_week_counter = {}
+
+        for w in weeks:
+            ts = pd.Timestamp(w)
+            month_key = (ts.year, ts.month)
+
+            month_week_counter[month_key] = month_week_counter.get(month_key, 0) + 1
+
+            week_labels[w] = (
+                f"Week {month_week_counter[month_key]}: "
+                f"{ts.strftime('%d %b %Y')}"
+            )
+
         label_to_week = {v: k for k, v in week_labels.items()}
+
+        # Already ordered latest → oldest
         week_label_options = list(week_labels.values())
 
         if not week_label_options:

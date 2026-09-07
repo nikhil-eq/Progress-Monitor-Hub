@@ -22,6 +22,7 @@ workstreams_list = [
     'Restratification - HIR',
     'Restratification - NFMR',
     'Restratification - Regen Check',
+    'Restratification - AD',
     'Change Detection',
     'Paddock Mapping and Digitisation',
     'Fire Impact Assessment',
@@ -31,10 +32,9 @@ workstreams_list = [
     'Field Survey Packages',
     'Adhoc Analysis',
     'Carbon Plus',
-    'Miscellaneous',
+    'Productivity & Enablement',
     'Research and Development',
-    'Others (Neither Ops nor R&D)'
-]
+    'House Help']
 
 workstreams_list_delivery = [
     'Initial Stratification - HIR',
@@ -42,6 +42,7 @@ workstreams_list_delivery = [
     'Restratification - HIR',
     'Restratification - NFMR',
     'Restratification - Regen Check',
+    'Restratification - AD',
     'Change Detection',
     'Paddock Mapping and Digitisation',
     'Fire Impact Assessment',
@@ -189,8 +190,8 @@ def daily_entry_form():
     workstream = st.session_state.workstream_name
     stage_val = st.session_state.stage
 
-    if workstream not in ["Miscellaneous", "Carbon Plus", "Research and Development",
-                          "Others (Neither Ops nor R&D)"]:
+    if workstream not in ["Productivity & Enablement", "Carbon Plus", "Research and Development",
+                          "House Help"]:
         st.selectbox('Project Name', options=project_names, index=None,
                      placeholder='Select project', key='project_name')
 
@@ -216,7 +217,7 @@ def daily_entry_form():
                                        "Peer Review"],
                      index=None, placeholder='Select stage', key='stage')
 
-    elif workstream in ['Miscellaneous']:
+    elif workstream in ['Productivity & Enablement']:
         st.selectbox('Stage', options=["Meetings", "Process Improvements", "Tool Building",
                                        "Automation", "Debugging"],
                      index=None, placeholder='Select stage', key='stage')
@@ -226,7 +227,7 @@ def daily_entry_form():
                                        "WS2: Allometric Equations"],
                      index=None, placeholder='Select stage', key='stage')
 
-    elif workstream in ['Others (Neither Ops nor R&D)']:
+    elif workstream in ['House Help']:
         st.text_input('Work (e.g., Sheets / Tracker / 1:1 etc.,)', key='stage')
 
     elif workstream in workstreams_list:
@@ -238,9 +239,13 @@ def daily_entry_form():
 
     if (workstream in workstreams_list and workstream != 'Research and Development'
             and stage_val not in ["Process Improvements", "Tool Building", "Automation"]):
-        st.text_input("Today's Update", key='today_update')
+        st.selectbox("Task Nature", options = ['Routine - SOP Available', 
+                                               'Moderate - Minor Deviation from SOP', 
+                                               'Off-SOP - Unclear Process',
+                                               'Complex - No SOP Available'], key='today_update', 
+                     placeholder = 'Select Nature of Task', index = None)
 
-    if workstream != 'Others (Neither Ops nor R&D)':
+    if workstream != 'House Help':
         st.selectbox('Current Status', options=["In Progress", "Blocked", "Completed"],
                      index=None, placeholder='Select status', key='current_status')
 
@@ -256,7 +261,8 @@ def daily_entry_form():
     elif workstream in ['Research and Development']:
         st.text_input('In-detail Explaination of the progress / trials', key='rnd_explaination')
 
-    st.text_input('Next Steps', key='next_steps')
+    st.selectbox('Next Steps', options = ['Still Processing', 'Awaiting Response - GC', 'Peer Review - EQ', 'Final QA - GC'], 
+                 key='next_steps', placeholder = 'Select Next Status', index = None)
     st.number_input('Time Spent (hours)', key='time_spent', step=0.5, format="%.2f")
 
 st.markdown("""

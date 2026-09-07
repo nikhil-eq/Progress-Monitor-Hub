@@ -9,7 +9,7 @@ from db import load_data
 #                  CONSTANTS
 # --------------------------------------------------
 
-TARGET_WORKSTREAM = 'miscellaneous'
+TARGET_WORKSTREAM = 'productivity & enablement'
 TARGET_STAGES_TOOLS_AUTOMATION = {'tool building', 'automation'}
 TARGET_STAGES_PROCESS_IMPROVEMENTS = {'process improvements'}
 
