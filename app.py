@@ -22,7 +22,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==================== ACCESS CONTROL ====================
-ALLOWED_EMAILS = ["admin@yourcompany.com"]   # <-- CHANGE THIS
+ALLOWED_EMAILS = ["nikhil@equilibriumearth.com",
+                  "sri@equilibriumearth.com", 
+                  "subhadeep@equilibriumearth.com"]   # <-- CHANGE THIS
 
 if "auth_email" not in st.session_state:
     st.session_state.auth_email = None

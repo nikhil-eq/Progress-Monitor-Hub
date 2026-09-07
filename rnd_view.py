@@ -1,12 +1,12 @@
+from auth import require_auth
+require_auth()
+
 import pandas as pd
 import streamlit as st
 
 from pathlib import Path
 
 from db import load_data
-
-from auth import require_auth
-require_auth()
 
 # --------------------------------------------------
 #                  CONSTANTS
