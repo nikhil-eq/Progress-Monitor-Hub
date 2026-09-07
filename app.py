@@ -1,4 +1,5 @@
 import streamlit as st
+import hashlib
 
 st.set_page_config(page_title=" EQ <> GC Progress Monitor Hub", layout="wide")
 
@@ -22,29 +23,41 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==================== ACCESS CONTROL ====================
-ALLOWED_EMAILS = ["nikhil@equilibriumearth.com",
-                  "sri@equilibriumearth.com", 
-                  "subhadeep@equilibriumearth.com"]   # <-- CHANGE THIS
+# CHANGE THESE PASSWORDS before deploying
+# Format: "email": "hashed_password"  (SHA-256 for basic obfuscation)
+ALLOWED_USERS = {
+    "nikhil@equilibriumearth.com": hashlib.sha256("Nikhil@2000".encode()).hexdigest(),
+    "sri@equilibriumearth.com": hashlib.sha256("sri@15".encode()).hexdigest(),
+    "subhadeep@equilibriumearth.com": hashlib.sha256("subhadeep@17".encode()).hexdigest(),
+    "samreen@equilibriumearth.com": hashlib.sha256("samreen@17".encode()).hexdigest(),
+}
 
-if "auth_email" not in st.session_state:
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
     st.session_state.auth_email = None
 
 with st.sidebar:
-    if st.session_state.auth_email is None:
-        st.markdown("---")
-        st.markdown("### 🔒 Admin Reports")
-        email = st.text_input("Email", key="auth_email_input",
-                              placeholder="Enter admin email…")
+    st.markdown("---")
+    st.markdown("### 🔒 Admin Reports")
+
+    if not st.session_state.authenticated:
+        email = st.text_input("Email", key="login_email", placeholder="admin@company.com")
+        password = st.text_input("Password", type="password", key="login_pwd", placeholder="••••••••")
+
         if st.button("Unlock", key="auth_unlock_btn"):
-            if email.strip().lower() in [e.lower() for e in ALLOWED_EMAILS]:
-                st.session_state.auth_email = email.strip().lower()
+            clean_email = email.strip().lower()
+            pwd_hash = hashlib.sha256(password.encode()).hexdigest()
+
+            if clean_email in ALLOWED_USERS and ALLOWED_USERS[clean_email] == pwd_hash:
+                st.session_state.authenticated = True
+                st.session_state.auth_email = clean_email
                 st.rerun()
             else:
-                st.error("❌ Access denied")
+                st.error("❌ Invalid email or password")
     else:
-        st.markdown("---")
         st.markdown(f"🔓 **Admin:** `{st.session_state.auth_email}`")
         if st.button("Logout", key="auth_logout_btn"):
+            st.session_state.authenticated = False
             st.session_state.auth_email = None
             st.rerun()
 # =======================================================
@@ -59,14 +72,14 @@ public_pages = [
     st.Page('rnd_view.py', title="R&D"),
 ]
 
-# Pages locked behind email
+# Pages locked behind REAL authentication
 restricted_pages = [
     st.Page("monthly_view.py", title='Monthly Progress'),
-    st.Page('delivered_view.py', title='Lifetime Progress'),
+    st.Page("delivered_view.py", title='Lifetime Progress'),
     st.Page('efficiency_view.py', title="Efficiencies"),
 ]
 
-pages = public_pages + restricted_pages if st.session_state.auth_email else public_pages
+pages = public_pages + restricted_pages if st.session_state.authenticated else public_pages
 
 pg = st.navigation(pages)
 pg.run()
