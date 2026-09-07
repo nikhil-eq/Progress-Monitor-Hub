@@ -5,6 +5,9 @@ from pathlib import Path
 
 from db import load_data
 
+from auth import require_auth
+require_auth()
+
 # --------------------------------------------------
 #                  CONSTANTS
 # --------------------------------------------------
