@@ -110,7 +110,8 @@ restricted_pages = [
     st.Page("monthly_view.py", title='Monthly Progress'),
     st.Page("delivered_view.py", title='Lifetime Progress'),
     st.Page('efficiency_view.py', title="Efficiencies"),
-    st.Page('rnd_view.py', title="R&D")
+    st.Page('rnd_view.py', title="R&D"),
+    st.Page('project_journey_view.py', title="Project Journey"),
 ]
 
 pages = public_pages + restricted_pages if st.session_state.authenticated else public_pages
