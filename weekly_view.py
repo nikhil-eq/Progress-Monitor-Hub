@@ -17,7 +17,9 @@ workstreams_list_delivery = [
     'Restratification - HIR',
     'Restratification - NFMR',
     'Restratification - Regen Check',
+    'Restratification - AD',
     'Change Detection',
+    'Paddock Mapping and Digitisation',
     'Fire Impact Assessment',
     'Grid Creation',
     'Spatial Data Cleaning and Ingestion',
@@ -94,8 +96,8 @@ def get_workstream_ops_summary(df: pd.DataFrame) -> pd.DataFrame:
     return summary
 
 
-def get_paddock_summary(df: pd.DataFrame) -> pd.DataFrame:
-    scoped = df[df['workstream_name'].isin(['Paddock Mapping and Digitisation'])].copy()
+def get_paddock_als_cpc_summary(df: pd.DataFrame) -> pd.DataFrame:
+    scoped = df[df['workstream_name'].isin(['Paddock Mapping and Digitisation', 'WS3:ALS-to-CPC'])].copy()
     scoped['current_status'] = scoped['current_status'].str.strip().str.lower()
 
     project_status = (
@@ -128,7 +130,7 @@ def get_paddock_summary(df: pd.DataFrame) -> pd.DataFrame:
     )
 
     summary['workstream_name'] = pd.Categorical(
-        summary['workstream_name'], categories=['Paddock Mapping and Digitisation'], ordered=True
+        summary['workstream_name'], categories=['Paddock Mapping and Digitisation', 'WS3:ALS-to-CPC'], ordered=True
     )
     summary = summary.sort_values('workstream_name').reset_index(drop=True)
 
@@ -255,7 +257,7 @@ def render_bullet_table(df: pd.DataFrame):
 st.markdown("""
     <style>
     div.st-key-weekly_view_card {
-        background-color: #000000 !important;
+        background-color: #014636 !important;
         border-radius: 8px;
         padding: 1rem;
     }
@@ -361,7 +363,6 @@ def page2():
         st.markdown('_No hours logged this week._')
     else:
         with st.container():
-            st.markdown(f"**{len(result)}** entries for {st.session_state.selected_week_label}")
             st.dataframe(result, use_container_width=True, height=min(900, 60 + 35 * len(result)))
     
 
@@ -380,15 +381,19 @@ def page2():
             st.markdown('_No hours logged this week._')
         else:
             st.dataframe(ops_summary)
-
-        st.markdown("**WS1: Paddock Mapping and Digitisation**")
-        paddock_summary = get_paddock_summary(week_df)
+            
+        st.markdown("**R&D Summary**")
+        
+        st.markdown('Quantitative')
+        
+        paddock_summary = get_paddock_als_cpc_summary(week_df)
         if paddock_summary.empty:
                 st.markdown('_No hours logged this week._')
         else:
             st.dataframe(paddock_summary)
+        
+        st.markdown('Qualitative')
 
-        st.markdown("**R&D Summary**")
         rnd_summary = get_workstream_rnd_summary(week_df)
         if rnd_summary.empty:
             st.markdown('_No hours logged this week._')

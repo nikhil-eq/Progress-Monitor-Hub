@@ -4,23 +4,57 @@ import hashlib
 st.set_page_config(page_title=" EQ <> GC Progress Monitor Hub", layout="wide")
 
 # ── Your existing CSS ──
+import streamlit as st
+import hashlib
+
+st.set_page_config(page_title=" EQ <> GC Progress Monitor Hub", layout="wide")
+
+# ── Consolidated animated background CSS ──
 st.markdown("""
     <style>
-    .stApp { background-color: #00011b; }
+    /* Main app: animated dark gradient */
+    .stApp {
+        background: linear-gradient(-45deg, #000000, #016c59, #7f0000);
+        background-size: 400% 400%;
+        animation: gradientShift 15s ease infinite;
+    }
+
+    /* Sidebar: same animated gradient */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(-45deg, #000000, #016c59, #7f0000);
+        background-size: 400% 400%;
+        animation: gradientShift 15s ease infinite;
+    }
+
+    /* Header: fully transparent so the gradient shows through */
+    header[data-testid="stHeader"] {
+        background-color: transparent !important;
+    }
+
+    @keyframes gradientShift {
+    0%   { background-position: 0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+    }
+
+    /* Optional: keep text readable on dark animated backgrounds */
+    .stApp, p, h1, h2, h3, h4, h5, h6, li, span, label, .stMarkdown {
+        color: #ffffff !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown("""
-    <style>
-    header[data-testid="stHeader"] { background-color: #ffffff00; }
-    </style>
-""", unsafe_allow_html=True)
+# st.markdown("""
+#     <style>
+#     header[data-testid="stHeader"] { background-color: #ffffff00; }
+#     </style>
+# """, unsafe_allow_html=True)
 
-st.markdown("""
-    <style>
-    [data-testid="stSidebar"] { background-color: #000120; }
-    </style>
-""", unsafe_allow_html=True)
+# st.markdown("""
+#     <style>
+#     [data-testid="stSidebar"] { background-color: #000120; }
+#     </style>
+# """, unsafe_allow_html=True)
 
 # ==================== ACCESS CONTROL ====================
 # CHANGE THESE PASSWORDS before deploying
@@ -69,7 +103,6 @@ st.title('EQ <> GC Progress Monitor Hub')
 public_pages = [
     st.Page("daily_entry.py", title='Daily Log Entry'),
     st.Page("weekly_view.py", title='Weekly Progress'),
-    st.Page('rnd_view.py', title="R&D"),
 ]
 
 # Pages locked behind REAL authentication
@@ -77,6 +110,7 @@ restricted_pages = [
     st.Page("monthly_view.py", title='Monthly Progress'),
     st.Page("delivered_view.py", title='Lifetime Progress'),
     st.Page('efficiency_view.py', title="Efficiencies"),
+    st.Page('rnd_view.py', title="R&D")
 ]
 
 pages = public_pages + restricted_pages if st.session_state.authenticated else public_pages

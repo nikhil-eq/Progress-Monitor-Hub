@@ -25,6 +25,7 @@ workstreams_list = [
     'Restratification - AD',
     'Change Detection',
     'Paddock Mapping and Digitisation',
+    'WS3:ALS-to-CPC',
     'Fire Impact Assessment',
     'Grid Creation',
     'Spatial Data Cleaning and Ingestion',
@@ -45,6 +46,7 @@ workstreams_list_delivery = [
     'Restratification - AD',
     'Change Detection',
     'Paddock Mapping and Digitisation',
+    'WS3:ALS-to-CPC',
     'Fire Impact Assessment',
     'Grid Creation',
     'Spatial Data Cleaning and Ingestion',
@@ -234,10 +236,7 @@ def daily_entry_form():
         st.selectbox('Stage', options=['Processing', 'Peer Review'],
                      index=None, placeholder='Select stage', key='stage')
 
-    # Re-read stage in case it was just set on this run
-    stage_val = st.session_state.stage
-
-    if (workstream in workstreams_list and workstream != 'Research and Development'
+    if (workstream in workstreams_list and workstream not in ['Research and Development', 'House Help']
             and stage_val not in ["Process Improvements", "Tool Building", "Automation"]):
         st.selectbox("Task Nature", options = ['Routine - SOP Available', 
                                                'Moderate - Minor Deviation from SOP', 
@@ -245,8 +244,7 @@ def daily_entry_form():
                                                'Complex - No SOP Available'], key='today_update', 
                      placeholder = 'Select Nature of Task', index = None)
 
-    if workstream != 'House Help':
-        st.selectbox('Current Status', options=["In Progress", "Blocked", "Completed"],
+    st.selectbox('Current Status', options=["In Progress", "Blocked", "Completed"],
                      index=None, placeholder='Select status', key='current_status')
 
     if stage_val in ['Process Improvements', 'Automation', 'Tool Building']:
@@ -260,8 +258,10 @@ def daily_entry_form():
 
     elif workstream in ['Research and Development']:
         st.text_input('In-detail Explaination of the progress / trials', key='rnd_explaination')
-
-    st.selectbox('Next Steps', options = ['Still Processing', 'Awaiting Response - GC', 'Peer Review - EQ', 'Final QA - GC'], 
+    
+    
+    elif workstream not in ['Research and Development', 'House Help']:
+        st.selectbox('Next Steps', options = ['Still Processing', 'Awaiting Response - GC', 'Peer Review - EQ', 'Final QA - GC'], 
                  key='next_steps', placeholder = 'Select Next Status', index = None)
     st.number_input('Time Spent (hours)', key='time_spent', step=0.5, format="%.2f")
 
