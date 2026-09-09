@@ -19,7 +19,7 @@ workstreams_list_delivery = [
     'Restratification - Regen Check',
     'Restratification - AD',
     'Change Detection',
-    'Paddock Mapping and Digitisation',
+    'WS1:Paddock Mapping and Digitization',
     'Fire Impact Assessment',
     'Grid Creation',
     'Spatial Data Cleaning and Ingestion',
@@ -32,7 +32,7 @@ workstreams_list_delivery = [
 rnd_list = [
     'Research and Development',
     'Productivity & Enablement',
-    'Paddock Mapping and Digitisation'
+    'WS1:Paddock Mapping and Digitization'
 ]
 
 
@@ -118,7 +118,7 @@ def get_workstream_ops_summary(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def get_paddock_als_cpc_summary(df: pd.DataFrame) -> pd.DataFrame:
-    scoped = df[df['workstream_name'].isin(['Paddock Mapping and Digitisation', 'WS3:ALS-to-CPC'])].copy()
+    scoped = df[df['workstream_name'].isin(['WS1:Paddock Mapping and Digitization', 'WS3:ALS-to-CPC'])].copy()
     scoped['current_status'] = scoped['current_status'].str.strip().str.lower()
 
     project_status = (
@@ -151,7 +151,7 @@ def get_paddock_als_cpc_summary(df: pd.DataFrame) -> pd.DataFrame:
     )
 
     summary['workstream_name'] = pd.Categorical(
-        summary['workstream_name'], categories=['Paddock Mapping and Digitisation', 'WS3:ALS-to-CPC'], ordered=True
+        summary['workstream_name'], categories=['WS1:Paddock Mapping and Digitization', 'WS3:ALS-to-CPC'], ordered=True
     )
     summary = summary.sort_values('workstream_name').reset_index(drop=True)
 

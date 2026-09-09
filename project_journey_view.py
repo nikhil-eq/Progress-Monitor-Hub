@@ -116,37 +116,74 @@ def page_project_journey():
     col3.metric("Date Range", f"{start_date} - {end_date}")
     col4.metric("Latest Status", latest_status)
 
-    # ── Timeline chart ──
+    # ── Timeline chart (stacked bar chart) ──
     st.markdown("### Project Timeline")
 
     status_colors = {
         'in progress': '#fbbf24',
         'completed': '#34d399',
-        'blocked': '#fb7185',
+        'blocked': "#b30c25ac",
     }
-    colors = journey['current_status'].str.lower().map(status_colors).fillna('#8fa3b8')
+    blocked_color = status_colors['blocked']
 
-    # marker size scaled by hours spent (with a floor so small entries stay visible)
-    sizes = (journey['time_spent'].fillna(0) * 40).clip(lower=60, upper=600)
+    daily = (
+        journey.groupby(['date', 'stage', 'current_status'], as_index=False, observed=True)
+               .agg(hours=('time_spent', 'sum'))
+    )
+    daily['date'] = pd.to_datetime(daily['date']).dt.normalize()
+    daily = daily.sort_values('date')
 
-    fig, ax = plt.subplots(figsize=(10, max(3, 0.5 * journey['stage'].nunique() + 1)))
+    fig, ax = plt.subplots(figsize=(10, 5))
     fig.patch.set_alpha(0.0)
     ax.patch.set_alpha(0.0)
 
-    ax.plot(journey['date'], journey['stage'], color='#3a4a5a', linewidth=1.5, zorder=1)
-    ax.scatter(journey['date'], journey['stage'], s=sizes, c=colors, zorder=2, edgecolors='#0a1628')
+    # ---- bar width scaled to the date span, so bars stay visible ----
+    active_dates = sorted(daily['date'].drop_duplicates().tolist())
+    span_days = max((active_dates[-1] - active_dates[0]).days, 1)
+    bar_width_days = max(span_days * 0.012, 1)   # scales with span, floor of 1.5 days
 
-    for _, row in journey.iterrows():
-        ax.annotate(
-            f"{row['time_spent']:.1f}h",
-            (row['date'], row['stage']),
-            textcoords="offset points", xytext=(0, 10),
-            ha='center', fontsize=8, color='#e8eef4',
+    # ---- shade EVERY gap between active days as "blocked" ----
+    all_days = pd.date_range(active_dates[0], active_dates[-1], freq='D')
+    active_set = set(active_dates)
+    inactive_days = [d for d in all_days if d not in active_set]
+
+    gap_spans = []
+    for d in inactive_days:
+        if gap_spans and (d - gap_spans[-1][1]).days == 1:
+            gap_spans[-1] = (gap_spans[-1][0], d)
+        else:
+            gap_spans.append((d, d))
+
+    for start, end in gap_spans:
+        ax.axvspan(
+            start - pd.Timedelta(days=bar_width_days / 2),
+            end + pd.Timedelta(days=bar_width_days / 2),
+            color=blocked_color, alpha=1, zorder=0, linewidth=0,
         )
 
-    text_color = "#e8eef4"
+    # ---- stacked bars: one bar per active day, one segment per stage logged ----
+    bottoms = {}
+    for _, row in daily.iterrows():
+        d = row['date']
+        h = row['hours']
+        status = str(row['current_status']).strip().lower()
+        color = status_colors.get(status, "#ff0000")
+        bottom = bottoms.get(d, 0)
+
+        ax.bar(d, h, bottom=bottom, width=bar_width_days, color=color,
+               edgecolor='#0a1628', linewidth=0.6, zorder=2)
+
+        if h > 0:
+            ax.text(
+                d, bottom + h / 2, str(row['stage']),
+                ha='center', va='center', fontsize=8, color='#0a1628',
+                rotation=90, zorder=3,
+            )
+        bottoms[d] = bottom + h
+
+    text_color = "#ffffff"
     ax.set_xlabel('Date', color=text_color)
-    ax.set_ylabel('Stage', color=text_color)
+    ax.set_ylabel('Hours', color=text_color)
     ax.tick_params(colors=text_color)
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%d %b'))
     for spine in ax.spines.values():
@@ -156,12 +193,24 @@ def page_project_journey():
 
     st.pyplot(fig)
 
-    # legend key (matplotlib legend with scatter dots is fiddly with categorical y-axis,
-    # so a simple markdown key is more reliable here)
     st.markdown(
-        "🟡 In Progress &nbsp;&nbsp; 🟢 Completed &nbsp;&nbsp; 🔴 Blocked &nbsp;&nbsp; "
-        "(marker size = hours spent that day)"
-    )
+    """
+    <div style="font-size: 14px;">
+        🟡 <b>In Progress</b>
+        &nbsp;&nbsp;
+        🟢 <b>Completed</b>
+        &nbsp;&nbsp;
+        🔴 <b>Blocked</b>
+        <br>
+        <span style="font-size: 12px; color: #9aa0a6;">
+            Bar height = hours logged that day ·
+            Red shading = gaps with no activity ·
+            Text on each bar = stage worked
+        </span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
     # ── Detail table ──
     st.markdown("### Entry Log")

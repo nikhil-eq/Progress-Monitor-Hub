@@ -46,7 +46,7 @@ workstreams_list_delivery = [
     'Restratification - NFMR',
     'Restratification - Regen Check',
     'Change Detection',
-    'Paddock Mapping and Digitisation',
+    'WS1:Paddock Mapping and Digitization',
     'Fire Impact Assessment',
     'Grid Creation',
     'Spatial Data Cleaning and Ingestion',
