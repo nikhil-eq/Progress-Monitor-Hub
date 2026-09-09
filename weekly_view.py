@@ -53,17 +53,29 @@ def get_latest_status_map(df: pd.DataFrame) -> pd.DataFrame:
 
 def get_workstream_ops_summary(df: pd.DataFrame) -> pd.DataFrame:
     """
-    One row per workstream: how many distinct projects have been touched,
-    how many are completed, and a bullet-point breakdown of project names
-    (every project touched, plus a separate list of the ones still In Progress).
+    One row per workstream (or, for Adhoc Analysis specifically, one row per
+    stage under it — labeled 'Adhoc Analysis - <stage>'): how many distinct
+    projects have been touched, how many are completed, and a bullet-point
+    breakdown of project names.
     """
     scoped = df[df['workstream_name'].isin(workstreams_list_delivery)].copy()
     scoped['current_status'] = scoped['current_status'].str.strip().str.lower()
+    scoped['stage'] = scoped['stage'].str.strip()
 
+    # display-only grouping key: split Adhoc Analysis out by stage,
+    # leave every other workstream as-is
+    scoped['display_workstream'] = scoped.apply(
+        lambda r: f"Adhoc Analysis - {r['stage']}" if r['workstream_name'] == 'Adhoc Analysis'
+                  else r['workstream_name'],
+        axis=1,
+    )
+
+    # latest known status per (display_workstream, project) — not per user,
+    # since this view is about project completion, not who logged it
     project_status = (
         scoped.sort_values('date')
-              .groupby(['workstream_name', 'project_name'], as_index=False)
-              .last()[['workstream_name', 'project_name', 'current_status']]
+              .groupby(['display_workstream', 'project_name'], as_index=False)
+              .last()[['display_workstream', 'project_name', 'current_status']]
     )
 
     def build_row(group: pd.DataFrame) -> pd.Series:
@@ -84,15 +96,24 @@ def get_workstream_ops_summary(df: pd.DataFrame) -> pd.DataFrame:
         })
 
     summary = (
-        project_status.groupby('workstream_name')
+        project_status.groupby('display_workstream')
                        .apply(build_row, include_groups=False)
                        .reset_index()
     )
+    summary = summary.rename(columns={'display_workstream': 'workstream_name'})
 
-    summary['workstream_name'] = pd.Categorical(
-        summary['workstream_name'], categories=workstreams_list_delivery, ordered=True
-    )
-    summary = summary.sort_values('workstream_name').reset_index(drop=True)
+    # keep the original ordering from workstreams_list_delivery, but let any
+    # 'Adhoc Analysis - <stage>' variants sit where 'Adhoc Analysis' used to be
+    def sort_key(name):
+        base = name.split(' - ')[0] if name.startswith('Adhoc Analysis') else name
+        try:
+            base_rank = workstreams_list_delivery.index(base)
+        except ValueError:
+            base_rank = len(workstreams_list_delivery)
+        return (base_rank, name)
+
+    summary = summary.sort_values(by='workstream_name', key=lambda col: col.map(sort_key))
+    summary = summary.reset_index(drop=True)
     return summary
 
 
@@ -297,18 +318,19 @@ def page2():
         # Convert to datetime
         df['week_start'] = pd.to_datetime(df['week_start'])
 
-        # Latest week first
-        weeks = sorted(
-            df['week_start'].dropna().unique(),
-            reverse=True
-        )
+        all_weeks = df['week_start'].dropna().unique()
 
-        # Week number resets for each month
+        # Ascending order, purely to compute correct "Week N" numbering
+        weeks_asc = sorted(all_weeks)
+
+        # Descending order, for how the dropdown is displayed (latest first)
+        weeks_desc = sorted(all_weeks, reverse=True)
+
+        # Week number resets for each month, counting forward chronologically
         week_labels = {}
-
         month_week_counter = {}
 
-        for w in weeks:
+        for w in weeks_asc:
             ts = pd.Timestamp(w)
             month_key = (ts.year, ts.month)
 
@@ -321,8 +343,8 @@ def page2():
 
         label_to_week = {v: k for k, v in week_labels.items()}
 
-        # Already ordered latest → oldest
-        week_label_options = list(week_labels.values())
+        # Dropdown still shows latest week first, but labels are now chronological
+        week_label_options = [week_labels[w] for w in weeks_desc]
 
         if not week_label_options:
             st.markdown('_No dated entries found._')

@@ -231,6 +231,19 @@ def daily_entry_form():
 
     elif workstream in ['House Help']:
         st.text_input('Work (e.g., Sheets / Tracker / 1:1 etc.,)', key='stage')
+    
+    elif workstream in ['Adhoc Analysis']:
+        st.selectbox('Sub Task', options = ['AM Deliverables Review',
+                                         'CEA Fieldplot Overlap Analysis', 
+                                         'TLS Stem Densities Extraction', 
+                                         'iMAD', 
+                                         'Carbon Abatement Interest Review', 
+                                         'MGA Zones', 
+                                         'AD Biomass Maps', 
+                                         'Stratification File Review', 
+                                         '10m Value Analysis - .plo vs .pld files'], 
+                     index = None, key = 'stage')
+        
 
     elif workstream in workstreams_list:
         st.selectbox('Stage', options=['Processing', 'Peer Review'],
