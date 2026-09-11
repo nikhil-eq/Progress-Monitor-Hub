@@ -3,6 +3,9 @@ import streamlit as st
 
 from pathlib import Path
 
+import io
+
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 from db import load_data
@@ -34,6 +37,64 @@ rnd_list = [
     'Productivity & Enablement',
     'WS1:Paddock Mapping and Digitization'
 ]
+
+
+# --------------------------------------------------
+#              HD CHART RENDERING SETTINGS
+# --------------------------------------------------
+
+HD_CHART_DPI = 1000      # export resolution (use 600 for print/PDF reports)
+HD_CHART_FORMAT = 'png' # switch to 'svg' for infinitely crisp vector graphics
+
+
+def setup_hd_matplotlib():
+    """Global matplotlib tweaks so every chart is anti-aliased, well-spaced
+    and exported at print resolution."""
+    mpl.rcParams.update({
+        # resolution / crispness
+        'figure.dpi': 120,
+        'savefig.dpi': HD_CHART_DPI,
+        'savefig.bbox': 'tight',
+        'savefig.pad_inches': 0.15,
+        'text.antialiased': True,
+        'lines.antialiased': True,
+        'patch.antialiased': True,
+        # typography
+        'font.family': 'DejaVu Sans',
+        'font.size': 11,
+        'axes.titlesize': 15,
+        'axes.titleweight': 'bold',
+        'axes.labelsize': 12,
+        'xtick.labelsize': 10.5,
+        'ytick.labelsize': 10.5,
+        'legend.fontsize': 9.5,
+        # dark-theme aware defaults
+        'text.color': '#e8eef4',
+        'axes.labelcolor': '#e8eef4',
+        'xtick.color': '#e8eef4',
+        'ytick.color': '#e8eef4',
+        'axes.edgecolor': '#3a4a5a',
+        'svg.fonttype': 'none',  # keep real text in SVG exports (selectable/crisp)
+    })
+
+
+setup_hd_matplotlib()
+
+
+def render_figure_hd(fig, transparent=True):
+    """Save the figure at high DPI (or as vector SVG) into a buffer and
+    display THAT, so Streamlit never upscales a blurry low-res PNG."""
+    buf = io.BytesIO()
+    fig.savefig(
+        buf,
+        format=HD_CHART_FORMAT,
+        dpi=HD_CHART_DPI,
+        transparent=transparent,
+        bbox_inches='tight',
+        pad_inches=0.15,
+    )
+    buf.seek(0)
+    st.image(buf, use_container_width=True)
 
 
 # --------------------------------------------------
@@ -225,6 +286,28 @@ def get_user_workstream_hours(week_df: pd.DataFrame) -> pd.DataFrame:
     pivot = hours.pivot(index='user_name', columns='workstream_name', values='hours').fillna(0)
     return pivot
 
+def get_user_stage_workstream_hours(week_df: pd.DataFrame) -> dict:
+    """
+    For each user: a pivot table of workstream_name (rows) x stage (columns),
+    with hours as values — used to build one stacked bar chart per user,
+    where each bar (workstream) is broken down by the stages worked on.
+    """
+    week_df = week_df.copy()
+    week_df['time_spent'] = pd.to_numeric(week_df['time_spent'], errors='coerce').fillna(0)
+
+    hours = (
+        week_df.groupby(['user_name', 'workstream_name', 'stage'], as_index=False)
+               .agg(hours=('time_spent', 'sum'))
+    )
+
+    user_pivots = {}
+    for user in sorted(hours['user_name'].dropna().unique()):
+        user_data = hours[hours['user_name'] == user]
+        pivot = user_data.pivot(index='workstream_name', columns='stage', values='hours').fillna(0)
+        user_pivots[user] = pivot
+
+    return user_pivots
+
 
 # --------------------------------------------------
 #                   STYLING HELPERS
@@ -386,6 +469,60 @@ def page2():
     else:
         with st.container():
             st.dataframe(result, use_container_width=True, height=min(900, 60 + 35 * len(result)))
+            
+    with st.container(border=True, key="weekly_view_card4"):
+        st.markdown("#### Individual Workstream Breakdown")
+        st.markdown("Hours per workstream, broken down by stage worked on - one chart per team member.")
+
+        user_pivots = get_user_stage_workstream_hours(week_df)
+
+        if not user_pivots:
+            st.markdown('_No hours logged this week._')
+        else:
+            # build one shared color map for stages, so the same stage
+            # always gets the same color across all four charts
+            all_stages = sorted({s for pivot in user_pivots.values() for s in pivot.columns})
+            cmap = plt.colormaps.get_cmap('tab20')
+            stage_colors = {stage: cmap(i / max(len(all_stages) - 1, 1)) for i, stage in enumerate(all_stages)}
+
+            n_users = len(user_pivots)
+            fig, axes = plt.subplots(1, n_users, figsize=(5.5 * n_users, 5.5), sharey=True)
+            fig.patch.set_alpha(0.0)
+
+            if n_users == 1:
+                axes = [axes]
+
+            text_color = "#e8eef4"
+
+            for ax, (user, pivot) in zip(axes, user_pivots.items()):
+                ax.patch.set_alpha(0.0)
+
+                bottom = pd.Series(0.0, index=pivot.index)
+                for stage in pivot.columns:
+                    values = pivot[stage]
+                    ax.bar(pivot.index, values, bottom=bottom, label=stage, color=stage_colors[stage], edgecolor='#0d1b26', linewidth=0.5)
+                    bottom += values
+
+                ax.grid(axis='x', visible=False)
+                ax.set_title(user, color=text_color, fontsize=13, fontweight='bold')
+                ax.set_xlabel('')
+                ax.tick_params(colors=text_color, labelrotation=75)
+                for spine in ax.spines.values():
+                    spine.set_color("#3a4a5a00")
+
+            axes[0].set_ylabel('Hours', color=text_color)
+            axes[0].tick_params(axis='y', colors=text_color)
+
+            # single shared legend for the whole figure, not per subplot
+            handles = [plt.Rectangle((0, 0), 1, 1, color=stage_colors[s]) for s in all_stages]
+            legend = fig.legend(handles, all_stages, loc='upper center',
+                                 bbox_to_anchor=(0.5, -0.05), ncol=4, fontsize=8)
+            legend.get_frame().set_alpha(0.0)
+            for text in legend.get_texts():
+                text.set_color(text_color)
+
+            fig.tight_layout()
+            render_figure_hd(fig)
     
 
     with st.container(border=True, key = "weekly_view_card2"):
@@ -431,17 +568,18 @@ def page2():
         if bandwidth.empty:
             st.markdown('_No hours logged this week._')
         else:
-            fig, ax = plt.subplots(figsize=(9, max(3, 0.6 * len(bandwidth))))
+            fig, ax = plt.subplots(figsize=(10, max(3.5, 0.7 * len(bandwidth))))
             fig.patch.set_alpha(0.0)
             ax.patch.set_alpha(0.0)
 
             bottom = pd.Series(0.0, index=bandwidth.index)
             for workstream in bandwidth.columns:
                 values = bandwidth[workstream]
-                ax.barh(bandwidth.index, values, left=bottom, label=workstream)
+                ax.barh(bandwidth.index, values, left=bottom, label=workstream, edgecolor="#0d1b2600", linewidth=0.5)
                 bottom += values
 
             text_color = "#e8eef4"
+            ax.grid(axis='y', visible=False)
             ax.set_xlabel('Hours', color=text_color)
             ax.set_ylabel('')
             ax.tick_params(colors=text_color)
@@ -456,7 +594,7 @@ def page2():
             ax.invert_yaxis()
             fig.tight_layout()
 
-            st.pyplot(fig, use_container_width=True)
+            render_figure_hd(fig)
 
 
 page2()

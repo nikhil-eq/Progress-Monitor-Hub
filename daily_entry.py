@@ -198,34 +198,34 @@ def daily_entry_form():
                      placeholder='Select project', key='project_name')
 
     if workstream in ['Initial Stratification - HIR']:
-        st.selectbox('Stage', options=["Pre Processing", "Product Update", "Post Processing", "Peer Review"],
+        st.selectbox('Stage', options=["SOP Familiarisation", "Pre Processing", "Product Update", "Post Processing", "Peer Review"],
                      index=None, placeholder='Select stage', key='stage')
 
     elif workstream in ['Initial Stratification - NFMR']:
-        st.selectbox('Stage', options=['Exclusions Delineation', 'CEAs Delineation', 'Peer Review'],
+        st.selectbox('Stage', options=['SOP Familiarisation', 'Exclusions Delineation', 'CEAs Delineation', 'Peer Review'],
                      index=None, placeholder='Select stage', key='stage')
 
     elif workstream in ['Restratification - HIR', 'Restratification - NFMR']:
-        st.selectbox('Stage', options=["Iterative Failing Grid Removal", "0.2ha Compilance", "1.5km Radius Check",
+        st.selectbox('Stage', options=['SOP Familiarisation', "Iterative Failing Grid Removal", "0.2ha Compilance", "1.5km Radius Check",
                                        "Model Point Allocation", "Strata File Update",
                                        "Topology / Geometry Check", "Peer Review"],
                      index=None, placeholder='Select stage', key='stage')
     elif workstream in ['Restratification - Regen Check']:
-        st.selectbox('Stage', options = ['Preliminary Processing', 'Biomass Processing', 'Restrat Processing'], 
+        st.selectbox('Stage', options = ['SOP Familiarisation', 'Preliminary Processing', 'Biomass Processing', 'Restrat Processing', 'Peer Review'], 
                     index = None, placeholder = 'Select stage', key = 'stage')
 
     elif workstream in ['AD Survey Packages']:
-        st.selectbox('Stage', options=["Track Digitisation", "Point / Plot Allocation", "Maps Preparation",
+        st.selectbox('Stage', options=['SOP Familiarisation', "Track Digitisation", "Point / Plot Allocation", "Maps Preparation",
                                        "Peer Review"],
                      index=None, placeholder='Select stage', key='stage')
 
     elif workstream in ['Productivity & Enablement']:
-        st.selectbox('Stage', options=["Meetings", "Process Improvements", "Tool Building",
-                                       "Automation", "Debugging"],
+        st.selectbox('Wing', options=["Meetings", "Process Improvements", "Tool Building",
+                                       "Automation", "Debugging", "Training / KT Given", "Training / KT Received"],
                      index=None, placeholder='Select stage', key='stage')
 
     elif workstream in ['Research and Development']:
-        st.selectbox('Stage', options=["iMAD", "WS3: ALS-to-CPC", "Fire Impact Assessment",
+        st.selectbox('Wing', options=["iMAD", "WS3: ALS-to-CPC", "Fire Impact Assessment",
                                        "WS2: Allometric Equations"],
                      index=None, placeholder='Select stage', key='stage')
 
@@ -246,10 +246,10 @@ def daily_entry_form():
         
 
     elif workstream in workstreams_list:
-        st.selectbox('Stage', options=['Processing', 'Peer Review'],
+        st.selectbox('Stage', options=['SOP Familiarisation', 'Processing', 'Peer Review'],
                      index=None, placeholder='Select stage', key='stage')
 
-    if (workstream in workstreams_list and workstream not in ['Research and Development', 'House Help']
+    if (workstream in workstreams_list and workstream not in ['Research and Development', 'House Help', 'Productivity & Enablement']
             and stage_val not in ["Process Improvements", "Tool Building", "Automation"]):
         st.selectbox("Task Nature", options = ['Routine - SOP Available', 
                                                'Moderate - Minor Deviation from SOP', 
@@ -260,9 +260,11 @@ def daily_entry_form():
     st.selectbox('Current Status', options=["In Progress", "Blocked", "Completed"],
                      index=None, placeholder='Select status', key='current_status')
 
-    if stage_val in ['Process Improvements', 'Automation', 'Tool Building']:
+    if stage_val in ['Process Improvements', 'Automation', 'Tool Building', 'Training / KT Given', 'Training / KT Received']:
         st.selectbox('Value Added Workstream?', options=workstreams_list_delivery,
                      index=None, placeholder='Select workstream', key='workstream_value_added')
+        
+    if stage_val in ['Process Improvements', 'Automation', 'Tool Building']:
         st.text_input('Broader View of Enhancements Made', key='broader_view')
         st.text_input('Detailed Description of Enhancement / Tool / Automation', key='efficiency_description')
 
@@ -273,7 +275,7 @@ def daily_entry_form():
         st.text_input('In-detail Explaination of the progress / trials', key='rnd_explaination')
     
     
-    elif workstream not in ['Research and Development', 'House Help']:
+    elif workstream not in ['Research and Development', 'House Help', 'Productivity & Enablement']:
         st.selectbox('Next Steps', options = ['Still Processing', 'Awaiting Response - GC', 'Peer Review - EQ', 'Final QA - GC'], 
                  key='next_steps', placeholder = 'Select Next Status', index = None)
     st.number_input('Time Spent (hours)', key='time_spent', step=0.5, format="%.2f")

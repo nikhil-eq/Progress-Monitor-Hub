@@ -114,20 +114,43 @@ def load_workstream_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
 #                   STYLING HELPER
 # --------------------------------------------------
 
+def render_bullet_table(df: pd.DataFrame):
+    """Render a dataframe as HTML so that '\\n'-separated bullet lists inside
+    cells show as real line breaks (st.dataframe collapses newlines)."""
+    display_df = df.copy()
+    for col in display_df.columns:
+        if display_df[col].dtype == object:
+            display_df[col] = display_df[col].astype(str).str.replace("\n", "<br>")
+
+    html = display_df.to_html(escape=False, index=False, classes="bullet-table", border=0)
+    st.markdown(html, unsafe_allow_html=True)
+
 def inject_css():
     st.markdown("""
         <style>
-        .nav-card:hover {
-            background: #162233 !important;
-            border-color: #2a3f55 !important;
-            transform: translateY(-2px);
+        /* dark theme table styling for the HTML bullet tables below */
+        table.bullet-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: transparent;
+            color: #e8eef4;
         }
-        .nav-card:active {
-            transform: translateY(0);
+        table.bullet-table th, table.bullet-table td {
+            border-bottom: 1px solid #1a2a3a;
+            border-right: 1px solid #1a2a3a;
+            padding: 8px 16px;
+            text-align: left;
+            vertical-align: top;
+            white-space: pre-line;
+        }
+        table.bullet-table th:last-child, table.bullet-table td:last-child {
+            border-right: none;
+        }
+        table.bullet-table tr:hover {
+            background: #162233;
         }
         </style>
     """, unsafe_allow_html=True)
-
 
 # --------------------------------------------------
 #                       PAGE
