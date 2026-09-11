@@ -378,16 +378,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown("""
-    <style>
-    div.st-key-weekly_view_card3 {
-        background-color: #000000 !important;
-        border-radius: 8px;
-        padding: 1rem;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
 
 def page2():
     st.markdown('### Weekly View')
@@ -463,12 +453,14 @@ def page2():
         'latest_stage': 'Last thing did',
         'latest_status': 'Current Status',
     })
+    
+    with st.expander('View Logs'):
 
-    if result.empty:
-        st.markdown('_No hours logged this week._')
-    else:
-        with st.container():
-            st.dataframe(result, use_container_width=True, height=min(900, 60 + 35 * len(result)))
+        if result.empty:
+            st.markdown('_No hours logged this week._')
+        else:
+            with st.container():
+                st.dataframe(result, use_container_width=True, height=min(900, 60 + 35 * len(result)))
             
     with st.container(border=True, key="weekly_view_card4"):
         st.markdown("#### Individual Workstream Breakdown")
@@ -486,11 +478,14 @@ def page2():
             stage_colors = {stage: cmap(i / max(len(all_stages) - 1, 1)) for i, stage in enumerate(all_stages)}
 
             n_users = len(user_pivots)
-            fig, axes = plt.subplots(1, n_users, figsize=(5.5 * n_users, 5.5), sharey=True)
+            n_cols = 2 if n_users > 1 else 1          # two charts per row
+            n_rows = (n_users + n_cols - 1) // n_cols
+            fig, axes = plt.subplots(n_rows, n_cols, figsize=(5.5 * n_cols, 5.2 * n_rows), sharey=True)
             fig.patch.set_alpha(0.0)
 
-            if n_users == 1:
-                axes = [axes]
+            axes = list(axes.flat) if n_rows * n_cols > 1 else [axes]
+            for unused_ax in axes[n_users:]:
+                unused_ax.axis('off')                 # hide empty slot on the last row
 
             text_color = "#e8eef4"
 
@@ -500,13 +495,13 @@ def page2():
                 bottom = pd.Series(0.0, index=pivot.index)
                 for stage in pivot.columns:
                     values = pivot[stage]
-                    ax.bar(pivot.index, values, bottom=bottom, label=stage, color=stage_colors[stage], edgecolor='#0d1b26', linewidth=0.5)
+                    ax.bar(pivot.index, values, bottom=bottom, label=stage, color=stage_colors[stage], edgecolor="#0d1b2641", linewidth=0.5)
                     bottom += values
 
                 ax.grid(axis='x', visible=False)
                 ax.set_title(user, color=text_color, fontsize=13, fontweight='bold')
                 ax.set_xlabel('')
-                ax.tick_params(colors=text_color, labelrotation=75)
+                ax.tick_params(colors=text_color, labelrotation=90)
                 for spine in ax.spines.values():
                     spine.set_color("#3a4a5a00")
 
@@ -524,40 +519,40 @@ def page2():
             fig.tight_layout()
             render_figure_hd(fig)
     
-
-    with st.container(border=True, key = "weekly_view_card2"):
-        st.markdown("#### Executive Project Summary")
-        st.markdown('**Operations Summary**')
-        ops_summary = get_workstream_ops_summary(week_df)
-        ops_summary = ops_summary.rename(columns={
-            'workstream_name': 'Workstream',
-            'total_touched': 'Projects Planned',
-            'completed_count': 'Projects Completed',
-            'all_projects': 'All Projects',
-            'in_progress_projects': 'In Progress Projects',
-        })
-        if ops_summary.empty:
-            st.markdown('_No hours logged this week._')
-        else:
-            st.dataframe(ops_summary)
-            
-        st.markdown("**R&D Summary**")
-        
-        st.markdown('Quantitative')
-        
-        paddock_summary = get_paddock_als_cpc_summary(week_df)
-        if paddock_summary.empty:
+    with st.expander('View Executive Project Summary'):
+        with st.container(border=True, key = "weekly_view_card2"):
+            st.markdown("#### Executive Project Summary")
+            st.markdown('**Operations Summary**')
+            ops_summary = get_workstream_ops_summary(week_df)
+            ops_summary = ops_summary.rename(columns={
+                'workstream_name': 'Workstream',
+                'total_touched': 'Projects Planned',
+                'completed_count': 'Projects Completed',
+                'all_projects': 'All Projects',
+                'in_progress_projects': 'In Progress Projects',
+            })
+            if ops_summary.empty:
                 st.markdown('_No hours logged this week._')
-        else:
-            st.dataframe(paddock_summary)
-        
-        st.markdown('Qualitative')
+            else:
+                st.dataframe(ops_summary)
+                
+            st.markdown("**R&D Summary**")
+            
+            st.markdown('Quantitative')
+            
+            paddock_summary = get_paddock_als_cpc_summary(week_df)
+            if paddock_summary.empty:
+                    st.markdown('_No hours logged this week._')
+            else:
+                st.dataframe(paddock_summary)
+            
+            st.markdown('Qualitative')
 
-        rnd_summary = get_workstream_rnd_summary(week_df)
-        if rnd_summary.empty:
-            st.markdown('_No hours logged this week._')
-        else:
-            st.dataframe(rnd_summary)
+            rnd_summary = get_workstream_rnd_summary(week_df)
+            if rnd_summary.empty:
+                st.markdown('_No hours logged this week._')
+            else:
+                st.dataframe(rnd_summary)
 
     with st.container(border=True, key = "weekly_view_card3"):
         st.markdown("#### Team Bandwidth")
