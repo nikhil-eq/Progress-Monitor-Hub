@@ -1,6 +1,3 @@
-from auth import require_auth
-require_auth()
-
 import pandas as pd
 import streamlit as st
 
@@ -96,9 +93,9 @@ def inject_css():
 
 def page5():
     inject_css()
-    st.title('Improvements / Tool Usage')
+    st.markdown('### Lean Improvements')
 
-    st.markdown('## Tool / Automation Usage')
+    st.markdown('#### Tool / Automation Usage')
     st.markdown(
         'Tools Build adding value in existing workstreams along with Manual v/s Automation/Tool Usage'
     )
@@ -116,7 +113,7 @@ def page5():
     st.dataframe(summary_tools_automation_df, use_container_width=True,
                  height=min(900, 60 + 35 * len(summary_tools_automation_df)))
 
-    st.markdown('## Process Improvements')
+    st.markdown('#### Process Improvements')
     st.dataframe(summary_process_improvements_df, use_container_width=True,
                  height=min(900, 60 + 35 * len(summary_process_improvements_df)))
 

@@ -1,6 +1,3 @@
-from auth import require_auth
-require_auth()
-
 import pandas as pd
 import streamlit as st
 
@@ -102,7 +99,7 @@ def get_monthly_project_status(month_df: pd.DataFrame) -> pd.DataFrame:
 st.markdown("""
     <style>
     div.st-key-monthly_view_card1 {
-        background-color: #014636 !important;
+        background-color: #ffffff00 !important;
         border-radius: 8px;
         padding: 1rem;
     }
@@ -112,7 +109,7 @@ st.markdown("""
 st.markdown("""
     <style>
     div.st-key-monthly_view_card2 {
-        background-color: #02818a !important;
+        background-color: #004f72 !important;
         border-radius: 8px;
         padding: 1rem;
     }
@@ -142,10 +139,9 @@ def inject_css():
 
 def page3():
     inject_css()
-    st.title('Monthly View')
 
     with st.container(border=True, key = 'monthly_view_card1'):
-        st.markdown('## Monthly Work Log')
+        st.markdown('#### Monthly Recap')
 
         df = load_data()
         df = df[df['workstream_name'].isin(workstreams_list_delivery)].copy()

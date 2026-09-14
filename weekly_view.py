@@ -361,7 +361,7 @@ def render_bullet_table(df: pd.DataFrame):
 st.markdown("""
     <style>
     div.st-key-weekly_view_card {
-        background-color: #014636 !important;
+        background-color: #ffffff00 !important;
         border-radius: 8px;
         padding: 1rem;
     }
@@ -380,11 +380,10 @@ st.markdown("""
 
 
 def page2():
-    st.markdown('### Weekly View')
     inject_css()
 
     with st.container(border=True, key = "weekly_view_card"):
-        st.markdown('#### Weekly Work Log')
+        st.markdown('#### Weekly Snapshot')
 
         df = load_data()
 

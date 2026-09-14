@@ -1,27 +1,25 @@
 import streamlit as st
-import hashlib
 
-st.set_page_config(page_title=" EQ <> GC Progress Monitor Hub", layout="wide")
+# --------------------------------------------------
+#              PAGE CONFIG (once only)
+# --------------------------------------------------
+st.set_page_config(page_title="EQ <> GC Progress Monitor Hub", layout="wide")
 
-# ── Your existing CSS ──
-import streamlit as st
-import hashlib
-
-st.set_page_config(page_title=" EQ <> GC Progress Monitor Hub", layout="wide")
-
-# ── Consolidated animated background CSS ──
+# --------------------------------------------------
+#         ANIMATED BACKGROUND + THEME CSS
+# --------------------------------------------------
 st.markdown("""
     <style>
     /* Main app: animated dark gradient */
     .stApp {
-        background: linear-gradient(-45deg, #000000, #016c59, #7f0000);
+        background: linear-gradient(-45deg, #016c59, #000000, #016c59);
         background-size: 400% 400%;
         animation: gradientShift 15s ease infinite;
     }
 
     /* Sidebar: same animated gradient */
     [data-testid="stSidebar"] {
-        background: linear-gradient(-45deg, #000000, #016c59, #7f0000);
+        background: linear-gradient(-45deg, #016c59, #000000, #016c59);
         background-size: 400% 400%;
         animation: gradientShift 15s ease infinite;
     }
@@ -32,89 +30,73 @@ st.markdown("""
     }
 
     @keyframes gradientShift {
-    0%   { background-position: 0% 50%; }
-    50%  { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
+        0%   { background-position: 0% 50%; }
+        50%  { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
     }
 
-    /* Optional: keep text readable on dark animated backgrounds */
+    /* Keep text readable on dark animated backgrounds */
     .stApp, p, h1, h2, h3, h4, h5, h6, li, span, label, .stMarkdown {
         color: #ffffff !important;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# st.markdown("""
-#     <style>
-#     header[data-testid="stHeader"] { background-color: #ffffff00; }
-#     </style>
-# """, unsafe_allow_html=True)
+# --------------------------------------------------
+#              IDENTITY & ACCESS CONTROL
+# --------------------------------------------------
+# Admin allowlist lives in st.secrets (never in the repo):
+#   admin_emails = ["nikhil@equilibriumearth.com", ...]
+admin_emails = set(st.secrets.get("admin_emails", []))
 
-# st.markdown("""
-#     <style>
-#     [data-testid="stSidebar"] { background-color: #000120; }
-#     </style>
-# """, unsafe_allow_html=True)
+user_email = st.user.email if st.user.is_logged_in else None
+is_admin = bool(user_email and user_email.lower() in {e.lower() for e in admin_emails})
 
-# ==================== ACCESS CONTROL ====================
-# CHANGE THESE PASSWORDS before deploying
-# Format: "email": "hashed_password"  (SHA-256 for basic obfuscation)
-ALLOWED_USERS = {
-    "nikhil@equilibriumearth.com": hashlib.sha256("Nikhil@2000".encode()).hexdigest(),
-    "sri@equilibriumearth.com": hashlib.sha256("sri@15".encode()).hexdigest(),
-    "subhadeep@equilibriumearth.com": hashlib.sha256("subhadeep@17".encode()).hexdigest(),
-    "samreen@equilibriumearth.com": hashlib.sha256("samreen@17".encode()).hexdigest(),
-}
-
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
-    st.session_state.auth_email = None
-
-with st.sidebar:
-    st.markdown("---")
-    st.markdown("### 🔒 Admin Reports")
-
-    if not st.session_state.authenticated:
-        email = st.text_input("Email", key="login_email", placeholder="admin@company.com")
-        password = st.text_input("Password", type="password", key="login_pwd", placeholder="••••••••")
-
-        if st.button("Unlock", key="auth_unlock_btn"):
-            clean_email = email.strip().lower()
-            pwd_hash = hashlib.sha256(password.encode()).hexdigest()
-
-            if clean_email in ALLOWED_USERS and ALLOWED_USERS[clean_email] == pwd_hash:
-                st.session_state.authenticated = True
-                st.session_state.auth_email = clean_email
-                st.rerun()
-            else:
-                st.error("❌ Invalid email or password")
-    else:
-        st.markdown(f"🔓 **Admin:** `{st.session_state.auth_email}`")
-        if st.button("Logout", key="auth_logout_btn"):
-            st.session_state.authenticated = False
-            st.session_state.auth_email = None
-            st.rerun()
-# =======================================================
-
-st.logo("https://github.com/nikhil-eq/comprehensive-project-management/blob/main/eq%20-%20white.png?raw=true", size='medium')
+# --------------------------------------------------
+#              BRANDING
+# --------------------------------------------------
+st.logo(
+    "https://github.com/nikhil-eq/comprehensive-project-management/blob/main/eq%20-%20white.png?raw=true",
+    size='medium',
+)
 st.title('EQ <> GC Progress Monitor Hub')
 
-# Pages everyone can see
+# --------------------------------------------------
+#              LOGIN / LOGOUT (sidebar)
+# --------------------------------------------------
+with st.sidebar:
+    st.markdown("---")
+    # st.markdown("### 🔒 Admin Reports")
+
+    if not st.user.is_logged_in:
+        st.markdown("Sign in with Google to unlock the admin reports.")
+        st.login()  # renders the "Log in with Google" button
+    else:
+        st.markdown(f"Signed in as: `{user_email}`")
+        if is_admin:
+            st.success("Admin access granted 🗸")
+        else:
+            st.info("Standard access — admin reports are hidden.")
+        if st.button("Log out"):
+            st.logout()
+
+# --------------------------------------------------
+#              PAGE ROUTING
+# --------------------------------------------------
 public_pages = [
     st.Page("daily_entry.py", title='Daily Log Entry'),
-    st.Page("weekly_view.py", title='Weekly Progress'),
+    st.Page("weekly_view.py", title='Weekly Snapshot'),
 ]
 
-# Pages locked behind REAL authentication
 restricted_pages = [
-    st.Page("monthly_view.py", title='Monthly Progress'),
-    st.Page("delivered_view.py", title='Lifetime Progress'),
-    st.Page('efficiency_view.py', title="Efficiencies"),
+    st.Page("monthly_view.py", title='Monthly Recap'),
+    st.Page("delivered_view.py", title='Delivered - Since Inception'),
+    st.Page('efficiency_view.py', title="Lean Improvements"),
     st.Page('rnd_view.py', title="R&D"),
     st.Page('project_journey_view.py', title="Project Journey"),
 ]
 
-pages = public_pages + restricted_pages if st.session_state.authenticated else public_pages
+pages = public_pages + restricted_pages if is_admin else public_pages
 
 pg = st.navigation(pages)
 pg.run()

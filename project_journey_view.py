@@ -5,10 +5,6 @@ import matplotlib.dates as mdates
 
 from db import load_data
 
-from auth import require_auth
-require_auth()
-
-
 # --------------------------------------------------
 #                   STYLING HELPER
 # --------------------------------------------------
@@ -54,7 +50,7 @@ def get_project_journey(df: pd.DataFrame, workstream: str, project: str) -> pd.D
 
 def page_project_journey():
     inject_css()
-    st.title('Project Journey')
+    st.markdown('#### Project Journey')
 
     df = load_data()
 
@@ -120,7 +116,7 @@ def page_project_journey():
     st.markdown("### Project Timeline")
 
     status_colors = {
-        'in progress': '#fbbf24',
+        'in progress': "#fbbe24ff",
         'completed': '#34d399',
         'blocked': "#b30c25ac",
     }
@@ -171,13 +167,13 @@ def page_project_journey():
         bottom = bottoms.get(d, 0)
 
         ax.bar(d, h, bottom=bottom, width=bar_width_days, color=color,
-               edgecolor='#0a1628', linewidth=0.6, zorder=2)
+               edgecolor="#0a162882", linewidth=0.6, zorder=2)
 
         if h > 0:
             ax.text(
                 d, bottom + h / 2, str(row['stage']),
-                ha='center', va='center', fontsize=8, color='#0a1628',
-                rotation=90, zorder=3,
+                ha='center', va='center', fontsize=8, color="#091A29FF",
+                rotation=90, zorder=3, fontweight = 'bold'
             )
         bottoms[d] = bottom + h
 

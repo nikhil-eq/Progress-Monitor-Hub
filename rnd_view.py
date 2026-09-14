@@ -1,6 +1,3 @@
-from auth import require_auth
-require_auth()
-
 import pandas as pd
 import streamlit as st
 
@@ -54,9 +51,7 @@ def inject_css():
 
 def page6():
     inject_css()
-    st.title('Research and Development')
-
-    st.markdown('# Research and Development')
+    st.markdown('#### Research and Development')
     st.markdown('All logged R&D work, most recent first.')
 
     rd_df = load_rd_log()
