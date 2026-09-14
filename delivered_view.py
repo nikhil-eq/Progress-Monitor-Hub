@@ -1,6 +1,3 @@
-from auth import require_auth
-require_auth()
-
 import pandas as pd
 import streamlit as st
 
@@ -158,10 +155,9 @@ def inject_css():
 
 def page4():
     inject_css()
-    st.title('Lifetime View')
 
     with st.container(border=True):
-        st.markdown('## Lifetime View')
+        st.markdown('#### Lifetime View')
 
     with st.container(border=True):
         st.markdown('Number of **Projects Completed (Lifetime)** in Each of the Workstreams')

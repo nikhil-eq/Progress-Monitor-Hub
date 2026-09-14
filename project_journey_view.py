@@ -5,10 +5,6 @@ import matplotlib.dates as mdates
 
 from db import load_data
 
-from auth import require_auth
-require_auth()
-
-
 # --------------------------------------------------
 #                   STYLING HELPER
 # --------------------------------------------------
@@ -54,7 +50,7 @@ def get_project_journey(df: pd.DataFrame, workstream: str, project: str) -> pd.D
 
 def page_project_journey():
     inject_css()
-    st.title('Project Journey')
+    st.markdown('#### Project Journey')
 
     df = load_data()
 

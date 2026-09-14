@@ -66,7 +66,7 @@ st.title('EQ <> GC Progress Monitor Hub')
 # --------------------------------------------------
 with st.sidebar:
     st.markdown("---")
-    st.markdown("### 🔒 Admin Reports")
+    # st.markdown("### 🔒 Admin Reports")
 
     if not st.user.is_logged_in:
         st.markdown("Sign in with Google to unlock the admin reports.")
@@ -74,7 +74,7 @@ with st.sidebar:
     else:
         st.markdown(f"Signed in as: `{user_email}`")
         if is_admin:
-            st.success("Admin access granted ✅")
+            st.success("Admin access granted 🗸")
         else:
             st.info("Standard access — admin reports are hidden.")
         if st.button("Log out"):
