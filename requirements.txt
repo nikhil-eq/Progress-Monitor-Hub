@@ -1,0 +1,8 @@
+streamlit==1.63.0
+authlib==1.6.5
+httpx
+pandas
+matplotlib
+openpyxl
+requests
+pillow
