@@ -157,7 +157,7 @@ def page4():
     inject_css()
 
     with st.container(border=True):
-        st.markdown('#### Lifetime View')
+        st.markdown('#### Delivered - Since Inception')
 
     with st.container(border=True):
         st.markdown('Number of **Projects Completed (Lifetime)** in Each of the Workstreams')
