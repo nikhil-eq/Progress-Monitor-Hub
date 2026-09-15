@@ -524,7 +524,7 @@ def page2():
 
             n_users = len(user_pivots)
             n_cols = 2 if n_users > 1 else 1          # two charts per row
-            n_rows = (n_users + n_cols - 1) // n_cols
+            n_rows =  (n_users + n_cols - 1) // n_cols
             fig, axes = plt.subplots(n_rows, n_cols, figsize=(5.5 * n_cols, 5.2 * n_rows), sharey=True)
             fig.patch.set_alpha(0.0)
 
@@ -562,7 +562,8 @@ def page2():
                 text.set_color(text_color)
 
             fig.tight_layout()
-            render_figure_hd(fig)
+            with st.container(width = "content", height = "content"):
+                st.pyplot(fig)
     
     with st.expander('View Executive Project Summary'):
         with st.container(border=True, key = "weekly_view_card2"):
@@ -633,8 +634,9 @@ def page2():
 
             ax.invert_yaxis()
             fig.tight_layout()
-
-            render_figure_hd(fig)
+            
+            with st.container(width = "content", height = "content"):
+                st.pyplot(fig)
 
 
 page2()
