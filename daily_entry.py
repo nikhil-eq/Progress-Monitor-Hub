@@ -315,7 +315,7 @@ def page1():
 
         if st.session_state.user_name not in [None, ""]:
             
-            if st.session_state.user_name in ['Rupaz']:
+            if st.session_state.user_name in ['Nikhil', 'Radha', 'Yogi', 'Rupaz']:
 
                 st.markdown(
                     f"Zindagi ki race mein isi tarah kaam karte raho, ek din bahut aage jaoge "
