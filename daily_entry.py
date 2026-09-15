@@ -93,6 +93,9 @@ if 'entry_date' not in st.session_state:
 if 'time_spent' not in st.session_state:
     st.session_state['time_spent'] = 0.0
 
+if 'is_rework' not in st.session_state:
+    st.session_state['is_rework'] = False
+
 for k, v in TEXT_DEFAULTS.items():
     if k not in st.session_state:
         st.session_state[k] = v
@@ -112,7 +115,8 @@ if 'user_name' not in st.session_state:
 def save_name_to_excel(entry_date_val, name, workstream, project, status, stage_val,
                         today_update_val, steps, hours, broader_view_val,
                         efficiency_description_val, rnd_explaination_val,
-                        workstream_value_added_val, manual_against_automation_val):
+                        workstream_value_added_val, manual_against_automation_val,
+                        is_rework_val):
     if not name or not name.strip():
         return
 
@@ -133,6 +137,7 @@ def save_name_to_excel(entry_date_val, name, workstream, project, status, stage_
         'rnd_explaination': rnd_explaination_val,
         'workstream_value_added': workstream_value_added_val,
         'manual_against_automation': manual_against_automation_val,
+        'is_rework': bool(is_rework_val),
     }
 
     append_entry(row_data)
@@ -154,6 +159,7 @@ def submit_entry():
         st.session_state.rnd_explaination,
         st.session_state.workstream_value_added,
         st.session_state.manual_against_automation,
+        st.session_state.is_rework,
     )
 
     # Clear the form after a successful submit, but keep the name.
@@ -165,6 +171,7 @@ def submit_entry():
     for k in TEXT_DEFAULTS:
         st.session_state[k] = ""
     st.session_state.time_spent = 0.0
+    st.session_state.is_rework = False
 
     st.session_state['_just_submitted'] = True
 
@@ -259,6 +266,13 @@ def daily_entry_form():
 
     st.selectbox('Current Status', options=["In Progress", "Blocked", "Completed"],
                      index=None, placeholder='Select status', key='current_status')
+
+    st.checkbox(
+        '🔄 Rework',
+        key='is_rework',
+        help="Tick this if you're redoing something that had already moved past this "
+             "stage - e.g. sent back from Peer Review, or re-opened after Completion.",
+    )
 
     if stage_val in ['Process Improvements', 'Automation', 'Tool Building', 'Training / KT Given', 'Training / KT Received']:
         st.selectbox('Value Added Workstream?', options=workstreams_list_delivery,

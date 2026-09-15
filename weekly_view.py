@@ -8,7 +8,7 @@ import io
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 
-from db import load_data
+from db import load_data, compute_rework_flags, get_rework_summary
 
 # --------------------------------------------------
 #                  CONSTANTS
@@ -442,6 +442,41 @@ def page2():
         on=['user_name', 'workstream_name', 'project_name'],
         how='left',
     )
+
+    # ── Rework flags (computed against the FULL history so we know whether
+    #    a project has ever bounced back to an earlier stage, and whether
+    #    that bounce-back happened during the selected week specifically) ──
+    rework_flags_all = compute_rework_flags(df)[['workstream_name', 'project_name', 'date', 'is_rework']]
+
+    reworked_this_week_keys = set(
+        zip(
+            rework_flags_all.loc[
+                rework_flags_all['is_rework'] & rework_flags_all['date'].isin(week_df['date']),
+                'workstream_name'
+            ],
+            rework_flags_all.loc[
+                rework_flags_all['is_rework'] & rework_flags_all['date'].isin(week_df['date']),
+                'project_name'
+            ],
+        )
+    )
+    ever_reworked_keys = set(
+        zip(
+            rework_flags_all.loc[rework_flags_all['is_rework'], 'workstream_name'],
+            rework_flags_all.loc[rework_flags_all['is_rework'], 'project_name'],
+        )
+    )
+
+    def rework_label(row):
+        key = (row['workstream_name'], row['project_name'])
+        if key in reworked_this_week_keys:
+            return '⚠️ This week'
+        elif key in ever_reworked_keys:
+            return '↩️ Previously'
+        return '—'
+
+    if not result.empty:
+        result['Reworked?'] = result.apply(rework_label, axis=1)
 
     result = result.sort_values(['user_name', 'workstream_name', 'project_name'])
     result = result.rename(columns={

@@ -3,7 +3,7 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
-from db import load_data
+from db import load_data, compute_rework_flags
 
 # --------------------------------------------------
 #                   STYLING HELPER
@@ -35,6 +35,16 @@ def get_project_journey(df: pd.DataFrame, workstream: str, project: str) -> pd.D
     ].copy()
 
     journey = journey.sort_values('date').reset_index(drop=True)
+
+    # Flag any entry that returns to a stage the team had already moved
+    # past (e.g. Peer Review -> back to Processing) as "rework", BEFORE
+    # the stage column is turned into a Categorical below. Assign by the
+    # original row index (NOT a date+stage merge) — merging on date+stage
+    # would duplicate rows whenever two people log the same stage on the
+    # same day.
+    flagged = compute_rework_flags(journey)
+    journey['is_rework'] = flagged['is_rework']
+    journey['is_rework'] = journey['is_rework'].fillna(False)
 
     # order stages by the order they first appear, so the y-axis reads
     # as a logical process sequence rather than alphabetically
@@ -106,11 +116,22 @@ def page_project_journey():
         </style>
     """, unsafe_allow_html=True)
 
-    col1, col2, col3, col4 = st.columns(4)
+    rework_rows = journey[journey['is_rework']]
+    rework_count = len(rework_rows)
+    reworked_stages = sorted(rework_rows['stage'].astype(str).unique())
+
+    col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric("Days Active", total_days)
     col2.metric("Total Hours", f"{total_hours:,.1f}")
     col3.metric("Date Range", f"{start_date} - {end_date}")
     col4.metric("Latest Status", latest_status)
+    col5.metric("Rework Events", rework_count)
+
+    if rework_count:
+        st.warning(
+            f"⚠️ This project bounced back to a previous stage {rework_count} time(s): "
+            f"{', '.join(reworked_stages)}."
+        )
 
     # ── Timeline chart (stacked bar chart) ──
     st.markdown("### Project Timeline")
@@ -124,7 +145,7 @@ def page_project_journey():
 
     daily = (
         journey.groupby(['date', 'stage', 'current_status'], as_index=False, observed=True)
-               .agg(hours=('time_spent', 'sum'))
+               .agg(hours=('time_spent', 'sum'), is_rework=('is_rework', 'any'))
     )
     daily['date'] = pd.to_datetime(daily['date']).dt.normalize()
     daily = daily.sort_values('date')
@@ -166,8 +187,14 @@ def page_project_journey():
         color = status_colors.get(status, "#ff0000")
         bottom = bottoms.get(d, 0)
 
-        ax.bar(d, h, bottom=bottom, width=bar_width_days, color=color,
-               edgecolor="#0a162882", linewidth=0.6, zorder=2)
+        is_rework_bar = bool(row['is_rework'])
+        ax.bar(
+            d, h, bottom=bottom, width=bar_width_days, color=color,
+            edgecolor="#ff0033" if is_rework_bar else "#0a162882",
+            linewidth=1.6 if is_rework_bar else 0.6,
+            hatch="///" if is_rework_bar else None,
+            zorder=2,
+        )
 
         if h > 0:
             ax.text(
@@ -197,11 +224,14 @@ def page_project_journey():
         🟢 <b>Completed</b>
         &nbsp;&nbsp;
         🔴 <b>Blocked</b>
+        &nbsp;&nbsp;
+        ⚠️ <b>///</b> hatched red outline = rework
         <br>
         <span style="font-size: 12px; color: #9aa0a6;">
             Bar height = hours logged that day ·
             Red shading = gaps with no activity ·
-            Text on each bar = stage worked
+            Text on each bar = stage worked ·
+            Hatched/red-bordered bars = the team returned to a stage it had already left
         </span>
     </div>
     """,
@@ -211,13 +241,15 @@ def page_project_journey():
     # ── Detail table ──
     st.markdown("### Entry Log")
     detail_cols = ['date', 'user_name', 'stage', 'current_status', 'time_spent',
-                   'today_update', 'next_steps']
+                   'today_update', 'next_steps', 'is_rework']
     detail = journey[[c for c in detail_cols if c in journey.columns]].copy()
     detail['date'] = detail['date'].dt.strftime('%d %b %Y')
+    detail['is_rework'] = detail['is_rework'].map({True: '⚠️ Rework', False: ''})
     detail = detail.rename(columns={
         'date': 'Date', 'user_name': 'Team Member', 'stage': 'Stage',
         'current_status': 'Status', 'time_spent': 'Hours',
         'today_update': 'Task Nature', 'next_steps': 'Next Steps',
+        'is_rework': 'Flag',
     })
 
     st.dataframe(detail, use_container_width=True, height=min(600, 60 + 35 * len(detail)))

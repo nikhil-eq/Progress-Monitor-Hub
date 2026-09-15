@@ -3,7 +3,7 @@ import streamlit as st
 
 from pathlib import Path
 
-from db import load_data
+from db import load_data, get_rework_summary
 
 # --------------------------------------------------
 #                  CONSTANTS
@@ -159,19 +159,46 @@ def page4():
     with st.container(border=True):
         st.markdown('#### Delivered - Since Inception')
 
-    with st.container(border=True):
+    with st.expander(label = 'View Total Number of Projects Delivered'):
         st.markdown('Number of **Projects Completed (Lifetime)** in Each of the Workstreams')
 
         summary_df, project_status_df, monthly_completions_df = load_workstream_data()
 
         st.dataframe(summary_df, use_container_width=True,
                      height=min(900, 60 + 35 * len(summary_df)))
+        
+    with st.expander('⚠️ Projects Flagged for Rework'):
+            st.markdown(
+                "A project/stage is flagged here if work returned to a stage the team had "
+                "already moved past (e.g. sent back from Peer Review to Processing)."
+            )
+            
+            df = load_data()
+            
+            rework_summary = get_rework_summary(df)
+            rework_summary = rework_summary.rename(columns={
+                'workstream_name': 'Workstream',
+                'project_name': 'Project Name',
+                'reworked_stages': 'Stage(s) Reworked',
+                'rework_count': '# Rework Events',
+                'last_rework_date': 'Most Recent Rework',
+            })
+            if rework_summary.empty:
+                st.markdown('_No rework detected across any workstream/project so far. 🎉_')
+            else:
+                rework_summary['Most Recent Rework'] = pd.to_datetime(
+                    rework_summary['Most Recent Rework']
+                ).dt.strftime('%d %b %Y')
+                rework_summary = rework_summary.sort_values('Most Recent Rework', ascending=False)
+                st.dataframe(rework_summary, use_container_width=True,
+                             height=min(500, 60 + 35 * len(rework_summary)))
+
 
     # ------------------------------------------------------------------
     #  Panels: completed projects by month, broken out per workstream
     # ------------------------------------------------------------------
     st.markdown("&nbsp;")  # spacer between the summary table and the panels below
-    st.markdown("## Completed Projects by Workstream")
+    st.markdown("#### Completed Projects by Workstream")
 
     for workstream in workstreams_list_delivery:
 
