@@ -214,7 +214,7 @@ def page_project_journey():
     fig.autofmt_xdate()
     fig.tight_layout()
 
-    with st.container(width = "content", height = "content", horizontal_alignment = "center"):
+    with st.container(width = 10 * 96, height = 15 * 96, horizontal_alignment = "center"):
         st.pyplot(fig)
 
     st.markdown(
