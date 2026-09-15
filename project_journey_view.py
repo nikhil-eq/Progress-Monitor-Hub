@@ -109,7 +109,7 @@ def page_project_journey():
     st.markdown("""
         <style>
         div[data-testid="stMetricValue"] {
-            font-size: 1.4rem !important;
+            font-size: 1.0rem !important;
             white-space: normal !important;
             overflow-wrap: break-word !important;
         }
