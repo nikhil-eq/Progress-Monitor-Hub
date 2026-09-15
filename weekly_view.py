@@ -562,7 +562,7 @@ def page2():
                 text.set_color(text_color)
 
             fig.tight_layout()
-            with st.container(width = "content", height = "content"):
+            with st.container(width = int(5.5 * n_cols * 96), height = int(5.0 * n_rows * 96)):
                 st.pyplot(fig)
     
     with st.expander('View Executive Project Summary'):
@@ -635,7 +635,7 @@ def page2():
             ax.invert_yaxis()
             fig.tight_layout()
             
-            with st.container(width = "content", height = "content"):
+            with st.container(width = 10 * 96, height = int(max(3.5, 0.7 * len(bandwidth)) * 96)):
                 st.pyplot(fig)
 
 
