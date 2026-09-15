@@ -314,11 +314,29 @@ def page1():
         team_info()
 
         if st.session_state.user_name not in [None, ""]:
+            
+            if st.session_state.user_name in ['Rupaz']:
 
-            st.markdown(
-                f"We Know You are Working Great, "
-                f"{st.session_state.user_name}"
-            )
+                st.markdown(
+                    f"Zindagi ki race mein isi tarah kaam karte raho, ek din bahut aage jaoge "
+                    f"{st.session_state.user_name}"
+                )
+            
+            elif st.session_state.user_name in ['Yogi']:
+            
+                            st.markdown(
+                                f"Vanakkam, Tracker Barro {st.session_state.user_name} Bhaiyyaih"
+                            )
+            
+            
+            else:
+                
+                st.markdown(
+                    f"We Know You are Working Great! "
+                    f"{st.session_state.user_name}"
+                )
+                
+                
 
             daily_entry_form()
 
