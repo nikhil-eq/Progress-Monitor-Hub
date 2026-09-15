@@ -445,11 +445,21 @@ def page2():
 
     # ── Rework flags (computed against the FULL history so we know whether
     #    a project has ever bounced back to an earlier stage, and whether
-    #    that bounce-back happened during the selected week specifically) ──
-    rework_flags_all = compute_rework_flags(df)[['workstream_name', 'project_name', 'date', 'is_rework']]
+    #    that bounce-back happened during the selected week specifically).
+    #    NOTE: keyed by (user, workstream, project) — NOT just
+    #    (workstream, project) — otherwise one teammate ticking the rework
+    #    box on their own entry would incorrectly flag every other
+    #    teammate's rows for the same project too. ──
+    rework_flags_all = compute_rework_flags(df)[
+        ['user_name', 'workstream_name', 'project_name', 'date', 'is_rework']
+    ]
 
     reworked_this_week_keys = set(
         zip(
+            rework_flags_all.loc[
+                rework_flags_all['is_rework'] & rework_flags_all['date'].isin(week_df['date']),
+                'user_name'
+            ],
             rework_flags_all.loc[
                 rework_flags_all['is_rework'] & rework_flags_all['date'].isin(week_df['date']),
                 'workstream_name'
@@ -462,13 +472,14 @@ def page2():
     )
     ever_reworked_keys = set(
         zip(
+            rework_flags_all.loc[rework_flags_all['is_rework'], 'user_name'],
             rework_flags_all.loc[rework_flags_all['is_rework'], 'workstream_name'],
             rework_flags_all.loc[rework_flags_all['is_rework'], 'project_name'],
         )
     )
 
     def rework_label(row):
-        key = (row['workstream_name'], row['project_name'])
+        key = (row['user_name'], row['workstream_name'], row['project_name'])
         if key in reworked_this_week_keys:
             return '⚠️ This week'
         elif key in ever_reworked_keys:
