@@ -93,8 +93,13 @@ if 'entry_date' not in st.session_state:
 if 'time_spent' not in st.session_state:
     st.session_state['time_spent'] = 0.0
 
+# 'is_rework' is always a STRING: '', 'GC - Triggered', or
+# 'EQ - Triggered' — never a bool. Keeping the default type consistent
+# with what actually gets saved avoids the radio widget (which also uses
+# this key and only offers those two string options) fighting with a
+# leftover boolean from a previous default.
 if 'is_rework' not in st.session_state:
-    st.session_state['is_rework'] = False
+    st.session_state['is_rework'] = ""
 
 for k, v in TEXT_DEFAULTS.items():
     if k not in st.session_state:
@@ -137,7 +142,7 @@ def save_name_to_excel(entry_date_val, name, workstream, project, status, stage_
         'rnd_explaination': rnd_explaination_val,
         'workstream_value_added': workstream_value_added_val,
         'manual_against_automation': manual_against_automation_val,
-        'is_rework': bool(is_rework_val),
+        'is_rework': is_rework_val or "",  # always the string trigger, or ''
     }
 
     append_entry(row_data)
@@ -171,7 +176,7 @@ def submit_entry():
     for k in TEXT_DEFAULTS:
         st.session_state[k] = ""
     st.session_state.time_spent = 0.0
-    st.session_state.is_rework = False
+    st.session_state.is_rework = ""
 
     st.session_state['_just_submitted'] = True
 
@@ -203,6 +208,27 @@ def daily_entry_form():
                           "House Help"]:
         st.selectbox('Project Name', options=project_names, index=None,
                      placeholder='Select project', key='project_name')
+
+    rework_checked = st.checkbox(
+        "🔄 Rework",
+        help="Tick this if you're redoing something that had already moved past this "
+             "stage - e.g. sent back from Peer Review, or re-opened after Completion.",
+    )
+
+    if rework_checked:
+        col1, col2 = st.columns(2)
+        with col1:
+            st.radio(
+                "Rework Triggered By",
+                options=["GC - Triggered", "EQ - Triggered"],
+                key="is_rework",
+                horizontal=True,
+            )
+    else:
+        # Unticking the checkbox must also clear any trigger picked
+        # earlier in this session — otherwise a stale "GC - Triggered"
+        # from a previous entry silently rides along on this one.
+        st.session_state.is_rework = ""
 
     if workstream in ['Initial Stratification - HIR']:
         st.selectbox('Stage', options=["SOP Familiarisation", "Pre Processing", "Product Update", "Post Processing", "Peer Review"],
@@ -267,12 +293,6 @@ def daily_entry_form():
     st.selectbox('Current Status', options=["In Progress", "Blocked", "Completed"],
                      index=None, placeholder='Select status', key='current_status')
 
-    st.checkbox(
-        '🔄 Rework',
-        key='is_rework',
-        help="Tick this if you're redoing something that had already moved past this "
-             "stage - e.g. sent back from Peer Review, or re-opened after Completion.",
-    )
 
     if stage_val in ['Process Improvements', 'Automation', 'Tool Building', 'Training / KT Given', 'Training / KT Received']:
         st.selectbox('Value Added Workstream?', options=workstreams_list_delivery,
@@ -292,7 +312,7 @@ def daily_entry_form():
     elif workstream not in ['Research and Development', 'House Help', 'Productivity & Enablement']:
         st.selectbox('Next Steps', options = ['Still Processing', 'Awaiting Response - GC', 'Peer Review - EQ', 'Final QA - GC'], 
                  key='next_steps', placeholder = 'Select Next Status', index = None)
-    st.number_input('Time Spent (hours)', key='time_spent', step=0.5, format="%.2f")
+    st.number_input('Time Spent (hours)', key='time_spent', step=0.5, format="%.2f", min_value = 0.0, max_value = 8.0)
 
 st.markdown("""
     <style>
@@ -322,12 +342,17 @@ def page1():
                     f"{st.session_state.user_name}"
                 )
             
-            elif st.session_state.user_name in ['Yogi']:
+            elif st.session_state.user_name in ['Nikhil']:
             
+                st.markdown(
+                    f"Be Humble, {st.session_state.user_name}"
+                    )
+                
+            elif st.session_state.user_name in ['Yogi']:
+                        
                             st.markdown(
                                 f"Vanakkam, Tracker Barro {st.session_state.user_name} Bhaiyyaih"
-                            )
-            
+                                )
             
             else:
                 

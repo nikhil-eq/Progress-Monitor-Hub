@@ -41,9 +41,13 @@ def get_project_journey(df: pd.DataFrame, workstream: str, project: str) -> pd.D
     # original row index (NOT a date+stage merge) — merging on date+stage
     # would duplicate rows whenever two people log the same stage on the
     # same day.
+    #
+    # 'is_rework' is a STRING column — '', 'GC - Triggered', or
+    # 'EQ - Triggered' — never a bool. It's kept as the string here (so the
+    # detail table below can show which side triggered it), and converted
+    # to an actual boolean explicitly wherever yes/no logic is needed.
     flagged = compute_rework_flags(journey)
-    journey['is_rework'] = flagged['is_rework']
-    journey['is_rework'] = journey['is_rework'].fillna(False)
+    journey['is_rework'] = flagged['is_rework'].fillna('')
 
     # order stages by the order they first appear, so the y-axis reads
     # as a logical process sequence rather than alphabetically
@@ -65,6 +69,10 @@ def build_journey_timeline_figure(daily: pd.DataFrame, status_colors: dict, bloc
     entries (bounced back to an earlier stage) get a hatched pattern and a
     red outline. Hover any segment for the exact date, stage, status and
     hours.
+
+    'daily' carries an 'is_rework' column that is already a plain bool
+    (aggregated with .any() in page_project_journey below), so it's safe
+    to use directly here with bool(...).
     """
     daily = daily.sort_values('date').reset_index(drop=True)
 
@@ -241,7 +249,9 @@ def page_project_journey():
         </style>
     """, unsafe_allow_html=True)
 
-    rework_rows = journey[journey['is_rework']]
+    # 'is_rework' is a string ('', 'GC - Triggered', 'EQ - Triggered') —
+    # filter with != '' rather than using the column as a boolean mask.
+    rework_rows = journey[journey['is_rework'] != '']
     rework_count = len(rework_rows)
     reworked_stages = sorted(rework_rows['stage'].astype(str).unique())
 
@@ -271,7 +281,15 @@ def page_project_journey():
 
     daily = (
         journey.groupby(['date', 'stage', 'current_status'], as_index=False, observed=True)
-               .agg(hours=('time_spent', 'sum'), is_rework=('is_rework', 'any'))
+               .agg(
+                   hours=('time_spent', 'sum'),
+                   # aggregate the string column down to a real bool per
+                   # (date, stage, status) group — True if ANY entry that
+                   # day was flagged rework, regardless of which side
+                   # triggered it. This is what build_journey_timeline_figure
+                   # expects for its hatching.
+                   is_rework=('is_rework', lambda s: (s != '').any()),
+               )
     )
     daily['date'] = pd.to_datetime(daily['date']).dt.normalize()
     daily = daily.sort_values('date')
@@ -307,7 +325,11 @@ def page_project_journey():
                    'today_update', 'next_steps', 'is_rework']
     detail = journey[[c for c in detail_cols if c in journey.columns]].copy()
     detail['date'] = detail['date'].dt.strftime('%d %b %Y')
-    detail['is_rework'] = detail['is_rework'].map({True: '⚠️ Rework', False: ''})
+    # is_rework is the trigger string itself ('', 'GC - Triggered',
+    # 'EQ - Triggered') — show it directly rather than mapping a bool.
+    detail['is_rework'] = detail['is_rework'].apply(
+        lambda v: f'⚠️ Rework ({v})' if v else ''
+    )
     detail = detail.rename(columns={
         'date': 'Date', 'user_name': 'Team Member', 'stage': 'Stage',
         'current_status': 'Status', 'time_spent': 'Hours',

@@ -28,6 +28,11 @@ workstreams_list_delivery = [
     'Carbon Plus',
 ]
 
+# The only two values 'is_rework' is ever allowed to hold besides ''. Any
+# other stray text found in the sheet (old 'True'/'False' rows, blanks,
+# typos) gets normalized down to '' rather than trusted as-is.
+REWORK_TRIGGERS = {'GC - Triggered', 'EQ - Triggered'}
+
 
 def load_data() -> pd.DataFrame:
     """Fetch all rows from the Google Sheet via Apps Script."""
@@ -47,18 +52,19 @@ def load_data() -> pd.DataFrame:
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip()
 
-    # 'is_rework' is now a self-reported checkbox on the Daily Log page
-    # (see daily_entry.py). Older rows logged before that checkbox existed
-    # won't have the column/value at all — treat those as False rather than
-    # guessing.
+    # 'is_rework' is a plain STRING column: '', 'GC - Triggered', or
+    # 'EQ - Triggered'. It is deliberately never coerced to bool — a
+    # column holding the literal text "False" is truthy under
+    # bool("False"), and using an object-dtype string column directly as
+    # a .loc[] boolean mask raises a KeyError instead of filtering, which
+    # is what happened before. Anywhere downstream needs a yes/no check,
+    # it must compare explicitly: df['is_rework'] != ''.
     if 'is_rework' in df.columns:
-        df['is_rework'] = (
-            df['is_rework'].astype(str).str.strip().str.lower()
-            .isin({'true', '1', '1.0', 'yes', 'y'})
-        )
+        df['is_rework'] = df['is_rework'].astype(str).str.strip()
+        df['is_rework'] = df['is_rework'].where(df['is_rework'].isin(REWORK_TRIGGERS), '')
     else:
-        df['is_rework'] = False
-    
+        df['is_rework'] = ''
+
     if 'date' in df.columns and not df['date'].isna().all():
         days_since_thursday = (df['date'].dt.weekday - 3) % 7
         df['week_start'] = df['date'] - pd.to_timedelta(days_since_thursday, unit='D')
@@ -89,26 +95,28 @@ def load_project_names() -> list:
 # --------------------------------------------------
 #
 # "Rework" is self-reported: the team member ticks a checkbox on the Daily
-# Log page ("This is rework") when logging an entry that revisits a stage
-# already completed/passed. load_data() already normalizes that column to a
-# real bool. These helpers just filter/summarize it — no inference here,
-# on purpose, since the team knows better than any heuristic whether
-# something is genuinely rework.
+# Log page and picks who triggered it. 'is_rework' is a string — '',
+# 'GC - Triggered', or 'EQ - Triggered' — never a bool. These helpers filter
+# on that string explicitly (df['is_rework'] != ''), so every page that
+# needs a yes/no check goes through the same, correct comparison rather
+# than each page inventing its own truthy test.
 
 def compute_rework_flags(df: pd.DataFrame) -> pd.DataFrame:
     """
     Returns a copy of df restricted to rows with workstream/project/stage/
-    date all present, carrying the self-reported 'is_rework' bool column
-    (kept as a function, rather than inlining this everywhere, so the three
-    pages that use it — weekly, delivered, project journey — all stay in
-    sync if the definition of "rework" ever changes again).
+    date all present, carrying the self-reported 'is_rework' string column
+    (kept as a function, rather than inlining this everywhere, so the pages
+    that use it — weekly, delivered, project journey — all stay in sync if
+    the definition of "rework" ever changes again).
     """
     required = ['workstream_name', 'project_name', 'stage', 'date']
     df = df[df['workstream_name'].isin(workstreams_list_delivery)].copy()
     d = df.dropna(subset=[c for c in required if c in df.columns]).copy()
+
     if 'is_rework' not in d.columns:
-        d['is_rework'] = False
-    d['is_rework'] = d['is_rework'].fillna(False).astype(bool)
+        d['is_rework'] = ''
+    d['is_rework'] = d['is_rework'].fillna('').astype(str).str.strip()
+    d['is_rework'] = d['is_rework'].where(d['is_rework'].isin(REWORK_TRIGGERS), '')
     return d
 
 
@@ -119,7 +127,7 @@ def get_rework_summary(df: pd.DataFrame) -> pd.DataFrame:
     rework date — handy for a "flag these for follow-up" table.
     """
     flagged = compute_rework_flags(df)
-    reworked = flagged[flagged['is_rework']]
+    reworked = flagged[flagged['is_rework'] != '']
 
     cols = ['workstream_name', 'project_name', 'reworked_stages', 'rework_count', 'last_rework_date']
     if reworked.empty:

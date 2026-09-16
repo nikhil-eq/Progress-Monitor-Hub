@@ -592,32 +592,33 @@ def page2():
     #    NOTE: keyed by (user, workstream, project) — NOT just
     #    (workstream, project) — otherwise one teammate ticking the rework
     #    box on their own entry would incorrectly flag every other
-    #    teammate's rows for the same project too. ──
+    #    teammate's rows for the same project too.
+    #
+    #    'is_rework' is a STRING column — '', 'GC - Triggered', or
+    #    'EQ - Triggered' — never a bool. Every check below compares it
+    #    explicitly rather than using it directly as a boolean mask. ──
     rework_flags_all = compute_rework_flags(df)[
         ['user_name', 'workstream_name', 'project_name', 'date', 'is_rework']
     ]
 
+    this_week_mask = (
+        rework_flags_all['is_rework'].isin(["GC - Triggered", "EQ - Triggered"])
+        & rework_flags_all['date'].isin(week_df['date'])
+    )
+    ever_mask = rework_flags_all['is_rework'] != ''
+
     reworked_this_week_keys = set(
         zip(
-            rework_flags_all.loc[
-                rework_flags_all['is_rework'] & rework_flags_all['date'].isin(week_df['date']),
-                'user_name'
-            ],
-            rework_flags_all.loc[
-                rework_flags_all['is_rework'] & rework_flags_all['date'].isin(week_df['date']),
-                'workstream_name'
-            ],
-            rework_flags_all.loc[
-                rework_flags_all['is_rework'] & rework_flags_all['date'].isin(week_df['date']),
-                'project_name'
-            ],
+            rework_flags_all.loc[this_week_mask, 'user_name'],
+            rework_flags_all.loc[this_week_mask, 'workstream_name'],
+            rework_flags_all.loc[this_week_mask, 'project_name'],
         )
     )
     ever_reworked_keys = set(
         zip(
-            rework_flags_all.loc[rework_flags_all['is_rework'], 'user_name'],
-            rework_flags_all.loc[rework_flags_all['is_rework'], 'workstream_name'],
-            rework_flags_all.loc[rework_flags_all['is_rework'], 'project_name'],
+            rework_flags_all.loc[ever_mask, 'user_name'],
+            rework_flags_all.loc[ever_mask, 'workstream_name'],
+            rework_flags_all.loc[ever_mask, 'project_name'],
         )
     )
 
