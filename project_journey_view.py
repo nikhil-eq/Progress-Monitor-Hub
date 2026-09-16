@@ -1,7 +1,6 @@
 import pandas as pd
 import streamlit as st
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
+import plotly.graph_objects as go
 
 from db import load_data, compute_rework_flags
 
@@ -52,6 +51,132 @@ def get_project_journey(df: pd.DataFrame, workstream: str, project: str) -> pd.D
     journey['stage'] = pd.Categorical(journey['stage'], categories=stage_order, ordered=True)
 
     return journey
+
+
+# --------------------------------------------------
+#                   CHART BUILDER
+# --------------------------------------------------
+
+def build_journey_timeline_figure(daily: pd.DataFrame, status_colors: dict, blocked_color: str) -> go.Figure:
+    """
+    Interactive Plotly version of the project timeline: one bar per
+    (day, stage) entry, stacked by day, colored by that entry's status.
+    Gaps between active days are shaded as "blocked" periods, and rework
+    entries (bounced back to an earlier stage) get a hatched pattern and a
+    red outline. Hover any segment for the exact date, stage, status and
+    hours.
+    """
+    daily = daily.sort_values('date').reset_index(drop=True)
+
+    active_dates = sorted(daily['date'].drop_duplicates().tolist())
+    span_days = max((active_dates[-1] - active_dates[0]).days, 1)
+    bar_width_days = max(span_days * 0.012, 1)
+    half_width = pd.Timedelta(days=bar_width_days / 2)
+    width_ms = bar_width_days * 24 * 60 * 60 * 1000
+
+    all_days = pd.date_range(active_dates[0], active_dates[-1], freq='D')
+    active_set = set(active_dates)
+    inactive_days = [d for d in all_days if d not in active_set]
+
+    gap_spans = []
+    for d in inactive_days:
+        if gap_spans and (d - gap_spans[-1][1]).days == 1:
+            gap_spans[-1] = (gap_spans[-1][0], d)
+        else:
+            gap_spans.append((d, d))
+
+    # full height for the gap shading, with a little headroom
+    y_top = daily.groupby('date')['hours'].sum().max() * 1.08
+
+    fig = go.Figure()
+
+    # gap shading as traces (not shapes) so gridlines stay behind it.
+    # added first so the real bars draw on top.
+    for start, end in gap_spans:
+        x0 = start - half_width
+        x1 = end + half_width
+        fig.add_trace(go.Bar(
+            x=[x0 + (x1 - x0) / 2],
+            y=[y_top], base=[0],
+            width=(x1 - x0).total_seconds() * 1000,
+            marker=dict(color=blocked_color, line=dict(width=0)),
+            showlegend=False,
+            hovertemplate=(
+                f"<b>🔴 Blocked</b><br>"
+                f"{x0.strftime('%d %b %Y')} – {x1.strftime('%d %b %Y')}<br>"
+                f"With GC on decision points"
+                + "<extra></extra>"
+            ),
+        ))
+
+    bottoms = {}
+    for _, row in daily.iterrows():
+        d = row['date']
+        h = row['hours']
+        if h <= 0:
+            continue
+
+        status = str(row['current_status']).strip().lower()
+        color = status_colors.get(status, '#ff0000')
+        bottom = bottoms.get(d, 0)
+        is_rework_bar = bool(row['is_rework'])
+
+        marker = dict(
+            color=color,
+            line=dict(
+                color='#ff0033' if is_rework_bar else '#0a1628',
+                width=2.2 if is_rework_bar else 0.6,
+            ),
+        )
+        if is_rework_bar:
+            marker['pattern'] = dict(
+                shape='/', fillmode='overlay',
+                bgcolor=color,            # the status color stays visible
+                fgcolor='#ff0033', size=6, solidity=0.35,
+            )
+
+        fig.add_trace(go.Bar(
+            x=[d], y=[h], base=[bottom],
+            width=width_ms,
+            marker=marker,
+            text=[str(row['stage'])],
+            textposition='inside',
+            textangle=-90,
+            insidetextanchor='middle',
+            textfont=dict(color='#091A29', size=10),
+            showlegend=False,
+            hovertemplate=(
+                f"<b>{d.strftime('%d %b %Y')}</b><br>"
+                f"Stage: {row['stage']}<br>"
+                f"Status: {row['current_status']}<br>"
+                f"Hours: {h:.1f}"
+                + ("<br>⚠️ Rework - returned to a previous stage" if is_rework_bar else "")
+                + "<extra></extra>"
+            ),
+        ))
+        bottoms[d] = bottom + h
+
+    # legend proxies — each real bar above has its own trace with
+    # showlegend=False, so add one dummy per status to drive the legend
+    for status_label, color in status_colors.items():
+        fig.add_trace(go.Bar(
+            x=[], y=[], name=status_label.title(), marker_color=color, showlegend=True,
+        ))
+
+    text_color = '#e8eef4'
+    fig.update_layout(
+        title=dict(text='Project Timeline', font=dict(color=text_color, size=16)),
+        xaxis=dict(title='Date', color=text_color, gridcolor='#1a2a3a', type='date', tickformat='%d %b'),
+        yaxis=dict(title='Hours', color=text_color, gridcolor='#1a2a3a', range=[0, y_top]),
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, x=0, font=dict(color=text_color)),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        height=480,
+        margin=dict(l=10, r=10, t=70, b=40),
+        bargap=0.15,
+        barmode = 'overlay'
+    )
+    return fig
 
 
 # --------------------------------------------------
@@ -133,14 +258,15 @@ def page_project_journey():
             f"{', '.join(reworked_stages)}."
         )
 
-    # ── Timeline chart (stacked bar chart) ──
+    # ── Timeline chart (interactive Plotly stacked bar) ──
     st.markdown("### Project Timeline")
 
     status_colors = {
-        'in progress': "#fbbe24ff",
-        'completed': '#34d399',
-        'blocked': "#b30c25ac",
+        'in progress': 'rgba(251, 190, 36, 1)',    # was #fbbe24ff
+        'completed':   '#34d399',
+        'blocked':     'rgba(179, 12, 37, 0.675)', # was #b30c25ac  (0xac/255 ≈ 0.675)
     }
+    
     blocked_color = status_colors['blocked']
 
     daily = (
@@ -150,72 +276,8 @@ def page_project_journey():
     daily['date'] = pd.to_datetime(daily['date']).dt.normalize()
     daily = daily.sort_values('date')
 
-    fig, ax = plt.subplots(figsize=(10, 5))
-    fig.patch.set_alpha(0.0)
-    ax.patch.set_alpha(0.0)
-
-    # ---- bar width scaled to the date span, so bars stay visible ----
-    active_dates = sorted(daily['date'].drop_duplicates().tolist())
-    span_days = max((active_dates[-1] - active_dates[0]).days, 1)
-    bar_width_days = max(span_days * 0.012, 1)   # scales with span, floor of 1.5 days
-
-    # ---- shade EVERY gap between active days as "blocked" ----
-    all_days = pd.date_range(active_dates[0], active_dates[-1], freq='D')
-    active_set = set(active_dates)
-    inactive_days = [d for d in all_days if d not in active_set]
-
-    gap_spans = []
-    for d in inactive_days:
-        if gap_spans and (d - gap_spans[-1][1]).days == 1:
-            gap_spans[-1] = (gap_spans[-1][0], d)
-        else:
-            gap_spans.append((d, d))
-
-    for start, end in gap_spans:
-        ax.axvspan(
-            start - pd.Timedelta(days=bar_width_days / 2),
-            end + pd.Timedelta(days=bar_width_days / 2),
-            color=blocked_color, alpha=1, zorder=0, linewidth=0,
-        )
-
-    # ---- stacked bars: one bar per active day, one segment per stage logged ----
-    bottoms = {}
-    for _, row in daily.iterrows():
-        d = row['date']
-        h = row['hours']
-        status = str(row['current_status']).strip().lower()
-        color = status_colors.get(status, "#ff0000")
-        bottom = bottoms.get(d, 0)
-
-        is_rework_bar = bool(row['is_rework'])
-        ax.bar(
-            d, h, bottom=bottom, width=bar_width_days, color=color,
-            edgecolor="#ff0033" if is_rework_bar else "#0a162882",
-            linewidth=1.6 if is_rework_bar else 0.6,
-            hatch="///" if is_rework_bar else None,
-            zorder=2,
-        )
-
-        if h > 0:
-            ax.text(
-                d, bottom + h / 2, str(row['stage']),
-                ha='center', va='center', fontsize=8, color="#091A29FF",
-                rotation=90, zorder=3, fontweight = 'bold'
-            )
-        bottoms[d] = bottom + h
-
-    text_color = "#ffffff"
-    ax.set_xlabel('Date', color=text_color)
-    ax.set_ylabel('Hours', color=text_color)
-    ax.tick_params(colors=text_color)
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%d %b'))
-    for spine in ax.spines.values():
-        spine.set_color("#3a4a5a")
-    fig.autofmt_xdate()
-    fig.tight_layout()
-
-    with st.container(width = 10 * 96, height = 5 * 96, horizontal_alignment = "center"):
-        st.pyplot(fig)
+    fig = build_journey_timeline_figure(daily, status_colors, blocked_color)
+    st.plotly_chart(fig, use_container_width=True, key=f"journey_timeline_{workstream}_{project}")
 
     st.markdown(
     """
@@ -226,13 +288,14 @@ def page_project_journey():
         &nbsp;&nbsp;
         🔴 <b>Blocked</b>
         &nbsp;&nbsp;
-        ⚠️ <b>///</b> hatched red outline = rework
+        ⚠️ hatched / red-bordered = rework
         <br>
         <span style="font-size: 12px; color: #9aa0a6;">
             Bar height = hours logged that day ·
             Red shading = gaps with no activity ·
             Text on each bar = stage worked ·
-            Hatched/red-bordered bars = the team returned to a stage it had already left
+            Hatched/red-bordered bars = the team returned to a stage it had already left ·
+            Hover any bar for details
         </span>
     </div>
     """,
@@ -240,7 +303,6 @@ def page_project_journey():
 )
 
     # ── Detail table ──
-    st.markdown("### Entry Log")
     detail_cols = ['date', 'user_name', 'stage', 'current_status', 'time_spent',
                    'today_update', 'next_steps', 'is_rework']
     detail = journey[[c for c in detail_cols if c in journey.columns]].copy()
@@ -252,8 +314,11 @@ def page_project_journey():
         'today_update': 'Task Nature', 'next_steps': 'Next Steps',
         'is_rework': 'Flag',
     })
+    
+    st.markdown("")
 
-    st.dataframe(detail, use_container_width=True, height=min(600, 60 + 35 * len(detail)))
+    with st.expander("View Entry Logs"):
+        st.dataframe(detail, use_container_width=True, height=min(600, 60 + 35 * len(detail)))
 
 
 page_project_journey()
