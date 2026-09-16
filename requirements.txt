@@ -6,3 +6,5 @@ matplotlib
 openpyxl
 requests
 pillow
+plotly
+colorsys
