@@ -7,4 +7,3 @@ openpyxl
 requests
 pillow
 plotly
-colorsys
