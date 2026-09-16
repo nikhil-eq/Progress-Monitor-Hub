@@ -1,0 +1,131 @@
+{
+  "members": [
+    "Nikhil",
+    "Radha",
+    "Yoga",
+    "Rupaz",
+    "Subhadeep",
+    "Samreen"
+  ],
+  "workstreams": [
+    "Restratification",
+    "FIA",
+    "Field Survey Packages",
+    "Adhoc Analysis",
+    "Initial Strat - HIR",
+    "Initial Strat - NFMR",
+    "WS1 - Paddock Mapping & Digitization",
+    "WS3 - ALS to CPC",
+    "AD Survey Packages",
+    "Change Detection",
+    "Workstream 2 - AD Enhancements"
+  ],
+  "assignments": {
+    "Nikhil": {
+      "Restratification": "R",
+      "FIA": "R",
+      "Field Survey Packages": "R",
+      "Adhoc Analysis": "R",
+      "Initial Strat - HIR": "R",
+      "Initial Strat - NFMR": "R",
+      "WS1 - Paddock Mapping & Digitization": "",
+      "WS3 - ALS to CPC": "R",
+      "AD Survey Packages": "C",
+      "Change Detection": "R",
+      "Workstream 2 - AD Enhancements": ""
+    },
+    "Radha": {
+      "Restratification": "C",
+      "FIA": "",
+      "Field Survey Packages": "R",
+      "Adhoc Analysis": "R",
+      "Initial Strat - HIR": "R*",
+      "Initial Strat - NFMR": "R",
+      "WS1 - Paddock Mapping & Digitization": "",
+      "WS3 - ALS to CPC": "",
+      "AD Survey Packages": "C",
+      "Change Detection": "",
+      "Workstream 2 - AD Enhancements": ""
+    },
+    "Yoga": {
+      "Restratification": "R",
+      "FIA": "R",
+      "Field Survey Packages": "R*",
+      "Adhoc Analysis": "R",
+      "Initial Strat - HIR": "R",
+      "Initial Strat - NFMR": "R*",
+      "WS1 - Paddock Mapping & Digitization": "R",
+      "WS3 - ALS to CPC": "R*",
+      "AD Survey Packages": "R",
+      "Change Detection": "",
+      "Workstream 2 - AD Enhancements": ""
+    },
+    "Rupaz": {
+      "Restratification": "R",
+      "FIA": "R",
+      "Field Survey Packages": "R",
+      "Adhoc Analysis": "S",
+      "Initial Strat - HIR": "R",
+      "Initial Strat - NFMR": "R*",
+      "WS1 - Paddock Mapping & Digitization": "R",
+      "WS3 - ALS to CPC": "",
+      "AD Survey Packages": "R",
+      "Change Detection": "",
+      "Workstream 2 - AD Enhancements": ""
+    },
+    "Subhadeep": {
+      "Restratification": "A",
+      "FIA": "A",
+      "Field Survey Packages": "A",
+      "Adhoc Analysis": "A",
+      "Initial Strat - HIR": "A",
+      "Initial Strat - NFMR": "A",
+      "WS1 - Paddock Mapping & Digitization": "A",
+      "WS3 - ALS to CPC": "A",
+      "AD Survey Packages": "A",
+      "Change Detection": "A",
+      "Workstream 2 - AD Enhancements": "A"
+    },
+    "Samreen": {
+      "Restratification": "I",
+      "FIA": "I",
+      "Field Survey Packages": "I",
+      "Adhoc Analysis": "I",
+      "Initial Strat - HIR": "I",
+      "Initial Strat - NFMR": "I",
+      "WS1 - Paddock Mapping & Digitization": "I",
+      "WS3 - ALS to CPC": "I",
+      "AD Survey Packages": "I",
+      "Change Detection": "I",
+      "Workstream 2 - AD Enhancements": "I"
+    }
+  },
+  "visibility": {
+    "Restratification": "Medium",
+    "FIA": "Low",
+    "Field Survey Packages": "Low",
+    "Adhoc Analysis": "Low",
+    "Initial Strat - HIR": "Medium",
+    "Initial Strat - NFMR": "Medium",
+    "WS1 - Paddock Mapping & Digitization": "High",
+    "WS3 - ALS to CPC": "Medium",
+    "AD Survey Packages": "High",
+    "Change Detection": "Medium",
+    "Workstream 2 - AD Enhancements": "Low"
+  },
+  "dependency": {
+    "Restratification": "High",
+    "FIA": "Low",
+    "Field Survey Packages": "Low",
+    "Adhoc Analysis": "Low",
+    "Initial Strat - HIR": "High",
+    "Initial Strat - NFMR": "High",
+    "WS1 - Paddock Mapping & Digitization": "Medium",
+    "WS3 - ALS to CPC": "Medium",
+    "AD Survey Packages": "Low",
+    "Change Detection": "Low",
+    "Workstream 2 - AD Enhancements": "Low"
+  },
+  "updated_at": "2026-09-16T13:26:20",
+  "updated_by": "nikhil@equilibriumearth.com"
+}
