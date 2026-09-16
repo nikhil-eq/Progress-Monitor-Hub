@@ -76,7 +76,7 @@ with st.sidebar:
         if is_admin:
             st.success("Admin access granted 🗸")
         else:
-            st.info("Standard access — admin reports are hidden.")
+            st.info("Standard access")
         if st.button("Log out"):
             st.logout()
 
