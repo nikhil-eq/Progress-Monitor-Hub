@@ -8,6 +8,12 @@ import io
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 
+import plotly.graph_objects as go
+import plotly.express as px
+import matplotlib.cm as cm
+import matplotlib.colors as mcolors
+import colorsys
+
 from db import load_data, compute_rework_flags, get_rework_summary
 
 # --------------------------------------------------
@@ -37,6 +43,10 @@ rnd_list = [
     'Productivity & Enablement',
     'WS1:Paddock Mapping and Digitization'
 ]
+
+# Fixed weekly capacity used for the "allotted vs actual" chart titles
+# (e.g. "Nikhil — 32.0/40 hours"). Change here if this ever needs to vary.
+ALLOTTED_HOURS_PER_WEEK = 40
 
 
 # --------------------------------------------------
@@ -286,11 +296,12 @@ def get_user_workstream_hours(week_df: pd.DataFrame) -> pd.DataFrame:
     pivot = hours.pivot(index='user_name', columns='workstream_name', values='hours').fillna(0)
     return pivot
 
+
 def get_user_stage_workstream_hours(week_df: pd.DataFrame) -> dict:
     """
     For each user: a pivot table of workstream_name (rows) x stage (columns),
-    with hours as values — used to build one stacked bar chart per user,
-    where each bar (workstream) is broken down by the stages worked on.
+    with hours as values — used to build one chart per user, where each bar
+    (workstream) is split into segments for the stages worked on within it.
     """
     week_df = week_df.copy()
     week_df['time_spent'] = pd.to_numeric(week_df['time_spent'], errors='coerce').fillna(0)
@@ -304,6 +315,9 @@ def get_user_stage_workstream_hours(week_df: pd.DataFrame) -> dict:
     for user in sorted(hours['user_name'].dropna().unique()):
         user_data = hours[hours['user_name'] == user]
         pivot = user_data.pivot(index='workstream_name', columns='stage', values='hours').fillna(0)
+        # drop workstreams with no hours at all, keep a stable, largest-first row order
+        pivot = pivot[pivot.sum(axis=1) > 0]
+        pivot = pivot.loc[pivot.sum(axis=1).sort_values(ascending=False).index]
         user_pivots[user] = pivot
 
     return user_pivots
@@ -351,6 +365,135 @@ def render_bullet_table(df: pd.DataFrame):
 
     html = display_df.to_html(escape=False, index=False, classes="bullet-table", border=0)
     st.markdown(html, unsafe_allow_html=True)
+
+
+GOLDEN_RATIO_CONJUGATE = 0.618033988749895
+
+
+def build_workstream_hue_map(user_pivots: dict) -> dict:
+    """
+    One distinct base hue per workstream, shared across every person's chart
+    so 'Grid Creation' (say) is always the same base color no matter whose
+    chart it appears in. Hues are spaced using the golden-angle trick so
+    adjacent workstreams (alphabetically) don't end up as near-duplicate
+    colors even when there are many of them.
+    """
+    all_workstreams = sorted({ws for pivot in user_pivots.values() for ws in pivot.index})
+    hues = {}
+    h = 0.05  # start slightly off pure red
+    for ws in all_workstreams:
+        hues[ws] = h
+        h = (h + GOLDEN_RATIO_CONJUGATE) % 1.0
+    return hues
+
+
+def stage_color_ramp(base_hue: float, n: int) -> list:
+    """
+    n colors going light -> dark within a single hue, used for the stage
+    segments stacked inside ONE workstream's bar. Each workstream has its
+    own base hue (from build_workstream_hue_map), so every bar's ramp is a
+    different color family, light-to-dark within itself.
+    """
+    if n <= 0:
+        return []
+    if n == 1:
+        r, g, b = colorsys.hls_to_rgb(base_hue, 0.48, 0.55)
+        return [mcolors.to_hex((r, g, b))]
+    colors = []
+    for i in range(n):
+        lightness = 0.80 - 0.44 * i / (n - 1)  # light (large segment) -> dark (small segment)
+        r, g, b = colorsys.hls_to_rgb(base_hue, lightness, 0.55)
+        colors.append(mcolors.to_hex((r, g, b)))
+    return colors
+
+
+def _text_color_for_bg(hex_color: str) -> str:
+    """Pick readable text color (dark or light) for a given background hex color."""
+    r, g, b = mcolors.to_rgb(hex_color)
+    luminance = 0.299 * r + 0.587 * g + 0.114 * b
+    return '#14100f' if luminance > 0.6 else '#fbf3f1'
+
+
+def build_person_stage_figure(user: str, pivot: pd.DataFrame, workstream_hues: dict) -> go.Figure:
+    """
+    Single interactive chart for one person:
+      - x-axis: workstream
+      - y-axis: hours
+      - each bar is stacked by the stages worked on within that workstream;
+        each workstream has its own base color (shared across all charts via
+        workstream_hues) and its stages ramp light -> dark within that color
+        (largest stage segment lightest / at the bottom, smallest darkest /
+        on top)
+      - a label inside each stage segment showing its hours
+      - a label above each bar showing the workstream's total hours
+      - title: "<user> — <actual>/<allotted> hours"
+    """
+    workstreams = list(pivot.index)
+    totals = pivot.sum(axis=1)
+    actual_hours = float(totals.sum())
+
+    fig = go.Figure()
+
+    for ws in workstreams:
+        row = pivot.loc[ws]
+        row = row[row > 0].sort_values(ascending=False)  # biggest chunk first -> bottom, lightest
+        base_hue = workstream_hues.get(ws, 0.0)
+        colors = stage_color_ramp(base_hue, len(row))
+        for stage, color in zip(row.index, colors):
+            value = row[stage]
+            fig.add_trace(go.Bar(
+                x=[ws],
+                y=[value],
+                marker_color=color,
+                marker_line=dict(color='#0d1b26', width=0.5),
+                textfont=dict(color=_text_color_for_bg(color), size=11),
+                name=stage,
+                hovertemplate=f"<b>{ws}</b><br>{stage}: {value:.1f} hrs<extra></extra>",
+                showlegend=False,
+            ))
+
+    # total label above each bar
+    fig.add_trace(go.Scatter(
+        x=workstreams,
+        y=totals,
+        mode='text',
+        text=[f"{t:.1f}" for t in totals],
+        textposition='top center',
+        textfont=dict(color='#e8eef4', size=12, family='DejaVu Sans'),
+        showlegend=False,
+        hoverinfo='skip',
+    ))
+
+    max_val = max(totals.max(), 1) if len(totals) else 1
+
+    fig.update_layout(
+        barmode='stack',
+        title=dict(
+            text=f"{user} :  {actual_hours:.1f}/{ALLOTTED_HOURS_PER_WEEK} hours",
+            font=dict(color='#e8eef4', size=16),
+        ),
+        xaxis=dict(
+            tickangle=90,
+            color='#e8eef4',
+            gridcolor='#1a2a3a',
+            automargin=True,
+            categoryorder='array',
+            categoryarray=workstreams,
+        ),
+        yaxis=dict(
+            title='Hours',
+            color='#e8eef4',
+            gridcolor='#1a2a3a',
+            rangemode='tozero',
+            range=[0, max_val * 1.2],
+        ),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        margin=dict(t=60, b=110, l=50, r=20),
+        height=430,
+        bargap=0.35,
+    )
+    return fig
 
 
 # --------------------------------------------------
@@ -509,61 +652,26 @@ def page2():
             
     with st.container(border=True, key="weekly_view_card4"):
         st.markdown("#### Individual Workstream Breakdown")
-        st.markdown("Hours per workstream, broken down by stage worked on - one chart per team member.")
 
         user_pivots = get_user_stage_workstream_hours(week_df)
 
         if not user_pivots:
             st.markdown('_No hours logged this week._')
         else:
-            # build one shared color map for stages, so the same stage
-            # always gets the same color across all four charts
-            all_stages = sorted({s for pivot in user_pivots.values() for s in pivot.columns})
-            cmap = plt.colormaps.get_cmap('tab20')
-            stage_colors = {stage: cmap(i / max(len(all_stages) - 1, 1)) for i, stage in enumerate(all_stages)}
-
-            n_users = len(user_pivots)
-            n_cols = 2 if n_users > 1 else 1          # two charts per row
-            n_rows =  (n_users + n_cols - 1) // n_cols
-            fig, axes = plt.subplots(n_rows, n_cols, figsize=(5.5 * n_cols, 5.2 * n_rows), sharey=True)
-            fig.patch.set_alpha(0.0)
-
-            axes = list(axes.flat) if n_rows * n_cols > 1 else [axes]
-            for unused_ax in axes[n_users:]:
-                unused_ax.axis('off')                 # hide empty slot on the last row
-
-            text_color = "#e8eef4"
-
-            for ax, (user, pivot) in zip(axes, user_pivots.items()):
-                ax.patch.set_alpha(0.0)
-
-                bottom = pd.Series(0.0, index=pivot.index)
-                for stage in pivot.columns:
-                    values = pivot[stage]
-                    ax.bar(pivot.index, values, bottom=bottom, label=stage, color=stage_colors[stage], edgecolor="#0d1b2641", linewidth=0.5)
-                    bottom += values
-
-                ax.grid(axis='x', visible=False)
-                ax.set_title(user, color=text_color, fontsize=13, fontweight='bold')
-                ax.set_xlabel('')
-                ax.tick_params(colors=text_color, labelrotation=90)
-                for spine in ax.spines.values():
-                    spine.set_color("#3a4a5a00")
-
-            axes[0].set_ylabel('Hours', color=text_color)
-            axes[0].tick_params(axis='y', colors=text_color)
-
-            # single shared legend for the whole figure, not per subplot
-            handles = [plt.Rectangle((0, 0), 1, 1, color=stage_colors[s]) for s in all_stages]
-            legend = fig.legend(handles, all_stages, loc='upper center',
-                                 bbox_to_anchor=(0.5, -0.05), ncol=4, fontsize=8)
-            legend.get_frame().set_alpha(0.0)
-            for text in legend.get_texts():
-                text.set_color(text_color)
-
-            fig.tight_layout()
-            with st.container(width = int(5.5 * n_cols * 96), height = int(5.0 * n_rows * 96)):
-                st.pyplot(fig)
+            workstream_hues = build_workstream_hue_map(user_pivots)
+            users = sorted(user_pivots.keys())
+            n_cols = 2
+            for row_start in range(0, len(users), n_cols):
+                row_users = users[row_start: row_start + n_cols]
+                cols = st.columns(len(row_users))
+                for col, user in zip(cols, row_users):
+                    pivot = user_pivots[user]
+                    if pivot.empty:
+                        with col:
+                            st.markdown(f'_{user}: no hours logged this week._')
+                        continue
+                    fig = build_person_stage_figure(user, pivot, workstream_hues)
+                    col.plotly_chart(fig, use_container_width=True, key=f"user_chart_{user}_{current_week}")
     
     with st.expander('View Executive Project Summary'):
         with st.container(border=True, key = "weekly_view_card2"):
@@ -599,44 +707,6 @@ def page2():
                 st.markdown('_No hours logged this week._')
             else:
                 st.dataframe(rnd_summary)
-
-    with st.container(border=True, key = "weekly_view_card3"):
-        st.markdown("#### Team Bandwidth")
-        st.markdown("Hours spent per team member, broken down by workstream.")
-
-        bandwidth = get_user_workstream_hours(week_df)
-
-        if bandwidth.empty:
-            st.markdown('_No hours logged this week._')
-        else:
-            fig, ax = plt.subplots(figsize=(10, max(3.5, 0.7 * len(bandwidth))))
-            fig.patch.set_alpha(0.0)
-            ax.patch.set_alpha(0.0)
-
-            bottom = pd.Series(0.0, index=bandwidth.index)
-            for workstream in bandwidth.columns:
-                values = bandwidth[workstream]
-                ax.barh(bandwidth.index, values, left=bottom, label=workstream, edgecolor="#0d1b2600", linewidth=0.5)
-                bottom += values
-
-            text_color = "#e8eef4"
-            ax.grid(axis='y', visible=False)
-            ax.set_xlabel('Hours', color=text_color)
-            ax.set_ylabel('')
-            ax.tick_params(colors=text_color)
-            for spine in ax.spines.values():
-                spine.set_color("#3a4a5a")
-
-            legend = ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left', fontsize=8)
-            legend.get_frame().set_alpha(0.0)
-            for text in legend.get_texts():
-                text.set_color(text_color)
-
-            ax.invert_yaxis()
-            fig.tight_layout()
-            
-            with st.container(width = 10 * 96, height = int(max(3.5, 0.7 * len(bandwidth)) * 96)):
-                st.pyplot(fig)
 
 
 page2()
