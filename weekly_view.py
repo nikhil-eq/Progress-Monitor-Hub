@@ -677,7 +677,7 @@ def page2():
     with st.expander('View Executive Project Summary'):
         with st.container(border=True, key = "weekly_view_card2"):
             st.markdown("#### Executive Project Summary")
-            st.markdown('**Operations Summary**')
+            st.markdown('**Project Services Summary**')
             ops_summary = get_workstream_ops_summary(week_df)
             ops_summary = ops_summary.rename(columns={
                 'workstream_name': 'Workstream',

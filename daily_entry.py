@@ -208,7 +208,7 @@ def daily_entry_form():
     
     if workstream in workstreams_list_delivery:
             st.radio(
-                "Select Work Type", 
+                "Select Task Type", 
                 options = ['Project Services', 'R&D'], 
                 key = 'work_type', 
                 horizontal = True
