@@ -17,8 +17,9 @@ workstreams_list_delivery = [
     'Restratification - Regen Check',
     'Restratification - AD',
     'Change Detection',
-    'WS1:Paddock Mapping and Digitization',
-    'WS3:ALS-to-CPC',
+    'WS1: Paddock Mapping and Digitization',
+    'WS2: AD Enhancements - Drivers of Change',
+    'WS3: ALS-to-CPC',
     'Fire Impact Assessment',
     'Grid Creation',
     'Spatial Data Cleaning and Ingestion',
@@ -28,10 +29,7 @@ workstreams_list_delivery = [
     'Carbon Plus',
 ]
 
-# The only two values 'is_rework' is ever allowed to hold besides ''. Any
-# other stray text found in the sheet (old 'True'/'False' rows, blanks,
-# typos) gets normalized down to '' rather than trusted as-is.
-REWORK_TRIGGERS = {'GC - Triggered', 'EQ - Triggered'}
+REWORK_TRIGGERS = {'GC - Oversight', 'EQ - Oversight'}
 
 
 def load_data() -> pd.DataFrame:
@@ -52,13 +50,7 @@ def load_data() -> pd.DataFrame:
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip()
 
-    # 'is_rework' is a plain STRING column: '', 'GC - Triggered', or
-    # 'EQ - Triggered'. It is deliberately never coerced to bool — a
-    # column holding the literal text "False" is truthy under
-    # bool("False"), and using an object-dtype string column directly as
-    # a .loc[] boolean mask raises a KeyError instead of filtering, which
-    # is what happened before. Anywhere downstream needs a yes/no check,
-    # it must compare explicitly: df['is_rework'] != ''.
+
     if 'is_rework' in df.columns:
         df['is_rework'] = df['is_rework'].astype(str).str.strip()
         df['is_rework'] = df['is_rework'].where(df['is_rework'].isin(REWORK_TRIGGERS), '')
@@ -81,6 +73,14 @@ def append_entry(row_dict: dict) -> dict:
     resp.raise_for_status()
     return resp.json()
 
+def append_entry_sheet2(row_dict: dict) -> dict:
+    """Append one row to the Google Sheet via Apps Script."""
+    # Clean values
+    clean = {k: ("" if v is None else v) for k, v in row_dict.items()}
+    resp = requests.post(APPS_SCRIPT_URL, json=clean, timeout=30)
+    resp.raise_for_status()
+    return resp.json()
+
 
 def load_project_names() -> list:
     """Local Excel — project names don't need to be in the cloud."""
@@ -93,13 +93,6 @@ def load_project_names() -> list:
 # --------------------------------------------------
 #              REWORK (shared)
 # --------------------------------------------------
-#
-# "Rework" is self-reported: the team member ticks a checkbox on the Daily
-# Log page and picks who triggered it. 'is_rework' is a string — '',
-# 'GC - Triggered', or 'EQ - Triggered' — never a bool. These helpers filter
-# on that string explicitly (df['is_rework'] != ''), so every page that
-# needs a yes/no check goes through the same, correct comparison rather
-# than each page inventing its own truthy test.
 
 def compute_rework_flags(df: pd.DataFrame) -> pd.DataFrame:
     """

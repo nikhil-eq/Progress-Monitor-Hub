@@ -89,6 +89,7 @@ public_pages = [
 ]
 
 restricted_pages = [
+    st.Page("weekly_planning.py", title = "Weekly Planning Entry"),
     st.Page("monthly_view.py", title='Monthly Recap'),
     st.Page("delivered_view.py", title='Delivered - Since Inception'),
     st.Page('efficiency_view.py', title="Lean Improvements"),

@@ -28,7 +28,9 @@ workstreams_list_delivery = [
     'Restratification - Regen Check',
     'Restratification - AD',
     'Change Detection',
-    'WS1:Paddock Mapping and Digitization',
+    'WS1: Paddock Mapping and Digitization',
+    'WS2: AD Enhancements - Drivers of Change',
+    'WS3: ALS-to-CPC',
     'Fire Impact Assessment',
     'Grid Creation',
     'Spatial Data Cleaning and Ingestion',
@@ -239,7 +241,7 @@ def get_paddock_als_cpc_summary(df: pd.DataFrame) -> pd.DataFrame:
 
 def get_workstream_rnd_summary(df: pd.DataFrame) -> pd.DataFrame:
     scoped = df[df['workstream_name'].isin(rnd_list)].copy()
-    scoped = scoped[~scoped['stage'].isin({'Meetings', 'Debugging'})]
+    scoped = scoped[~scoped['stage'].isin(['Meetings', 'Debugging', 'House Help', 'Training / KT Given', 'Training / KT Received'])]
 
     scoped['stage'] = scoped['stage'].str.strip()
     scoped['rnd_explaination'] = scoped['rnd_explaination'].astype(str).str.strip()
@@ -249,13 +251,12 @@ def get_workstream_rnd_summary(df: pd.DataFrame) -> pd.DataFrame:
 
     stage_display_names = {
         'iMAD': 'iMAD: Change Detection',
-        'WS3: ALS-to-CPC': 'WS3: ALS-to-CPC',
+        'WS3:ALS-to-CPC': 'WS3: ALS-to-CPC',
         'Fire Impact Assessment': 'Fire Impact Assessment',
-        'WS2: Allometric Equations': 'WS2: Allometric Equations',
+        'WS2:AD Enhancements & driver of changes': 'WS2:AD Enhancements & driver of changes',
     }
     scoped['stage'] = scoped['stage'].replace(stage_display_names)
 
-    # Guard: nothing left to summarize this week
     if scoped.empty:
         return pd.DataFrame(columns=['Workstream', 'Progress'])
 
