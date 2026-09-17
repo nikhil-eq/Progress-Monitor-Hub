@@ -92,7 +92,6 @@ restricted_pages = [
     st.Page("monthly_view.py", title='Monthly Recap'),
     st.Page("delivered_view.py", title='Delivered - Since Inception'),
     st.Page('efficiency_view.py', title="Lean Improvements"),
-    st.Page('rnd_view.py', title="R&D"),
     st.Page('project_journey_view.py', title="Project Journey"),
     st.Page('rasci_view.py', title="RASCI Matrix")
 ]

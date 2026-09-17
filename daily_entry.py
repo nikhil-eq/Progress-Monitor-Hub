@@ -25,6 +25,7 @@ workstreams_list = [
     'Restratification - AD',
     'Change Detection',
     'WS1:Paddock Mapping and Digitization',
+    'WS2: Allometric Equations',
     'WS3:ALS-to-CPC',
     'Fire Impact Assessment',
     'Grid Creation',
@@ -34,8 +35,7 @@ workstreams_list = [
     'Adhoc Analysis',
     'Carbon Plus',
     'Productivity & Enablement',
-    'Research and Development',
-    'House Help']
+    ]
 
 workstreams_list_delivery = [
     'Initial Stratification - HIR',
@@ -45,8 +45,9 @@ workstreams_list_delivery = [
     'Restratification - Regen Check',
     'Restratification - AD',
     'Change Detection',
-    'WS1:Paddock Mapping and Digitization',
-    'WS3:ALS-to-CPC',
+    'WS1: Paddock Mapping and Digitization',
+    'WS2: AD Enhancements - Drivers of Change',
+    'WS3: ALS-to-CPC',
     'Fire Impact Assessment',
     'Grid Creation',
     'Spatial Data Cleaning and Ingestion',
@@ -92,12 +93,10 @@ if 'entry_date' not in st.session_state:
 
 if 'time_spent' not in st.session_state:
     st.session_state['time_spent'] = 0.0
+    
+if 'work_type' not in st.session_state:
+    st.session_state['work_type'] = "Project Services"
 
-# 'is_rework' is always a STRING: '', 'GC - Triggered', or
-# 'EQ - Triggered' — never a bool. Keeping the default type consistent
-# with what actually gets saved avoids the radio widget (which also uses
-# this key and only offers those two string options) fighting with a
-# leftover boolean from a previous default.
 if 'is_rework' not in st.session_state:
     st.session_state['is_rework'] = ""
 
@@ -117,7 +116,7 @@ if 'user_name' not in st.session_state:
 #                   SAVE / SUBMIT
 # --------------------------------------------------
 
-def save_name_to_excel(entry_date_val, name, workstream, project, status, stage_val,
+def save_name_to_excel(entry_date_val, name, workstream, work_type, project, status, stage_val,
                         today_update_val, steps, hours, broader_view_val,
                         efficiency_description_val, rnd_explaination_val,
                         workstream_value_added_val, manual_against_automation_val,
@@ -131,6 +130,7 @@ def save_name_to_excel(entry_date_val, name, workstream, project, status, stage_
         'date': date_str,
         'user_name': name,
         'workstream_name': workstream,
+        'work_type': work_type,
         'project_name': project,
         'current_status': status,
         'stage': stage_val,
@@ -153,6 +153,7 @@ def submit_entry():
         st.session_state.entry_date,
         st.session_state.user_name,
         st.session_state.workstream_name,
+        st.session_state.work_type,
         st.session_state.project_name,
         st.session_state.current_status,
         st.session_state.stage,
@@ -203,116 +204,130 @@ def daily_entry_form():
 
     workstream = st.session_state.workstream_name
     stage_val = st.session_state.stage
-
-    if workstream not in ["Productivity & Enablement", "Carbon Plus", "Research and Development",
-                          "House Help"]:
-        st.selectbox('Project Name', options=project_names, index=None,
-                     placeholder='Select project', key='project_name')
-
-    rework_checked = st.checkbox(
-        "🔄 Rework",
-        help="Tick this if you're redoing something that had already moved past this "
-             "stage - e.g. sent back from Peer Review, or re-opened after Completion.",
-    )
-
-    if rework_checked:
-        col1, col2 = st.columns(2)
-        with col1:
+    work_type = st.session_state.work_type
+    
+    if workstream in workstreams_list_delivery:
             st.radio(
-                "Rework Triggered By",
-                options=["GC - Triggered", "EQ - Triggered"],
-                key="is_rework",
-                horizontal=True,
+                "Select Work Type", 
+                options = ['Project Services', 'R&D'], 
+                key = 'work_type', 
+                horizontal = True
             )
-    else:
-        # Unticking the checkbox must also clear any trigger picked
-        # earlier in this session — otherwise a stale "GC - Triggered"
-        # from a previous entry silently rides along on this one.
-        st.session_state.is_rework = ""
+            
+    if work_type == 'Project Services':
 
-    if workstream in ['Initial Stratification - HIR']:
-        st.selectbox('Stage', options=["SOP Familiarisation", "Pre Processing", "Product Update", "Post Processing", "Peer Review"],
-                     index=None, placeholder='Select stage', key='stage')
+        if workstream not in ["Productivity & Enablement", "Carbon Plus", "Research and Development",
+                            "House Help"]:
+            st.selectbox('Project Name', options=project_names, index=None,
+                        placeholder='Select project', key='project_name')
+        
+        if workstream in workstreams_list_delivery:
 
-    elif workstream in ['Initial Stratification - NFMR']:
-        st.selectbox('Stage', options=['SOP Familiarisation', 'Exclusions Delineation', 'CEAs Delineation', 'Peer Review'],
-                     index=None, placeholder='Select stage', key='stage')
+            rework_checked = st.checkbox(
+                "🔄 Rework",
+                help="Tick this if you're redoing something that had already moved past this "
+                    "stage - e.g. sent back from Peer Review, or re-opened after Completion.",
+            )
 
-    elif workstream in ['Restratification - HIR', 'Restratification - NFMR']:
-        st.selectbox('Stage', options=['SOP Familiarisation', "Iterative Failing Grid Removal", "0.2ha Compilance", "1.5km Radius Check",
-                                       "Model Point Allocation", "Strata File Update",
-                                       "Topology / Geometry Check", "Peer Review"],
-                     index=None, placeholder='Select stage', key='stage')
-    elif workstream in ['Restratification - Regen Check']:
-        st.selectbox('Stage', options = ['SOP Familiarisation', 'Preliminary Processing', 'Biomass Processing', 'Restrat Processing', 'Peer Review'], 
-                    index = None, placeholder = 'Select stage', key = 'stage')
+            if rework_checked:
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.radio(
+                        "Rework Triggered due to",
+                        options=["GC - Oversight", "EQ - Oversight"],
+                        key="is_rework",
+                        horizontal=True,
+                    )
+            else:
+                st.session_state.is_rework = ""
 
-    elif workstream in ['AD Survey Packages']:
-        st.selectbox('Stage', options=['SOP Familiarisation', "Track Digitisation", "Point / Plot Allocation", "Maps Preparation",
-                                       "Peer Review"],
-                     index=None, placeholder='Select stage', key='stage')
+        if workstream in ['Initial Stratification - HIR']:
+            st.selectbox('Stage', options=["SOP Familiarisation", "Pre Processing", "Product Update", "Post Processing", "Peer Review"],
+                        index=None, placeholder='Select stage', key='stage')
 
-    elif workstream in ['Productivity & Enablement']:
-        st.selectbox('Wing', options=["Meetings", "Process Improvements", "Tool Building",
-                                       "Automation", "Debugging", "Training / KT Given", "Training / KT Received"],
-                     index=None, placeholder='Select stage', key='stage')
+        elif workstream in ['Initial Stratification - NFMR']:
+            st.selectbox('Stage', options=['SOP Familiarisation', 'Exclusions Delineation', 'CEAs Delineation', 'Peer Review'],
+                        index=None, placeholder='Select stage', key='stage')
 
-    elif workstream in ['Research and Development']:
-        st.selectbox('Wing', options=["iMAD", "WS3: ALS-to-CPC", "Fire Impact Assessment",
-                                       "WS2: Allometric Equations"],
-                     index=None, placeholder='Select stage', key='stage')
+        elif workstream in ['Restratification - HIR', 'Restratification - NFMR']:
+            st.selectbox('Stage', options=['SOP Familiarisation', "Iterative Failing Grid Removal", "0.2ha Compilance", "1.5km Radius Check",
+                                        "Model Point Allocation", "Strata File Update",
+                                        "Topology / Geometry Check", "Peer Review"],
+                        index=None, placeholder='Select stage', key='stage')
+        elif workstream in ['Restratification - Regen Check']:
+            st.selectbox('Stage', options = ['SOP Familiarisation', 'Preliminary Processing', 'Biomass Processing', 'Restrat Processing', 'Peer Review'], 
+                        index = None, placeholder = 'Select stage', key = 'stage')
 
-    elif workstream in ['House Help']:
-        st.text_input('Work (e.g., Sheets / Tracker / 1:1 etc.,)', key='stage')
+        elif workstream in ['AD Survey Packages']:
+            st.selectbox('Stage', options=['SOP Familiarisation', "Track Digitisation", "Point / Plot Allocation", "Maps Preparation",
+                                        "Peer Review"],
+                        index=None, placeholder='Select stage', key='stage')
+
+        elif workstream in ['Productivity & Enablement']:
+            st.selectbox('Wing', options=["House Help", "Meetings", "Process Improvements", "Tool Building",
+                                        "Automation", "Debugging", "Training / KT Given", "Training / KT Received"],
+                        index=None, placeholder='Select stage', key='stage')
+        
+        elif workstream in ['Adhoc Analysis']:
+            st.selectbox('Sub Task', options = ['AM Deliverables Review',
+                                            'CEA Fieldplot Overlap Analysis', 
+                                            'TLS Stem Densities Extraction', 
+                                            'iMAD', 
+                                            'Carbon Abatement Interest Review', 
+                                            'MGA Zones', 
+                                            'AD Biomass Maps', 
+                                            'Stratification File Review', 
+                                            '10m Value Analysis - .plo vs .pld files'], 
+                        index = None, key = 'stage')
+            
+
+        elif workstream in workstreams_list:
+            st.selectbox('Stage', options=['SOP Familiarisation', 'Processing', 'Peer Review'],
+                        index=None, placeholder='Select stage', key='stage')
+
+        if (workstream in workstreams_list and workstream not in ['Research and Development', 'House Help', 'Productivity & Enablement']
+                and stage_val not in ["Process Improvements", "Tool Building", "Automation"]):
+            st.selectbox("Task Nature", options = ['Routine - SOP Available', 
+                                                'Moderate - Minor Deviation from SOP', 
+                                                'Off-SOP - Unclear Process',
+                                                'Complex - No SOP Available'], key='today_update', 
+                        placeholder = 'Select Nature of Task', index = None)
+
+        st.selectbox('Current Status', options=["In Progress", "Blocked", "Completed"],
+                        index=None, placeholder='Select status', key='current_status')
+
+
+        if stage_val in ['Process Improvements', 'Automation', 'Tool Building']:
+            st.selectbox('Value Added Workstream?', options=workstreams_list_delivery,
+                        index=None, placeholder='Select workstream', key='workstream_value_added')
+        
+        if stage_val in ["House Help", "Meetings", "Debugging", "Training / KT Given", "Training / KT Received"]:
+            
+            st.text_input('Details', key='today_update')
+            
+        if stage_val in ['Process Improvements', 'Automation', 'Tool Building']:
+            st.text_input('Broader View of Enhancements Made', key='broader_view')
+            st.text_input('Detailed Description of Enhancement / Tool / Automation', key='efficiency_description')
+
+        if stage_val in ['Automation', 'Tool Building']:
+            st.text_input('Manual v/s Automated workflow gain', key='manual_against_automation')
+        
+        
+        elif workstream not in ['Research and Development', 'House Help', 'Productivity & Enablement']:
+            st.selectbox('Next Steps', options = ['Still Processing', 'Awaiting Response - GC', 'Peer Review - EQ', 'Final QA - GC'], 
+                    key='next_steps', placeholder = 'Select Next Status', index = None)
+        
     
-    elif workstream in ['Adhoc Analysis']:
-        st.selectbox('Sub Task', options = ['AM Deliverables Review',
-                                         'CEA Fieldplot Overlap Analysis', 
-                                         'TLS Stem Densities Extraction', 
-                                         'iMAD', 
-                                         'Carbon Abatement Interest Review', 
-                                         'MGA Zones', 
-                                         'AD Biomass Maps', 
-                                         'Stratification File Review', 
-                                         '10m Value Analysis - .plo vs .pld files'], 
-                     index = None, key = 'stage')
+    else: 
         
-
-    elif workstream in workstreams_list:
-        st.selectbox('Stage', options=['SOP Familiarisation', 'Processing', 'Peer Review'],
-                     index=None, placeholder='Select stage', key='stage')
-
-    if (workstream in workstreams_list and workstream not in ['Research and Development', 'House Help', 'Productivity & Enablement']
-            and stage_val not in ["Process Improvements", "Tool Building", "Automation"]):
-        st.selectbox("Task Nature", options = ['Routine - SOP Available', 
-                                               'Moderate - Minor Deviation from SOP', 
-                                               'Off-SOP - Unclear Process',
-                                               'Complex - No SOP Available'], key='today_update', 
-                     placeholder = 'Select Nature of Task', index = None)
-
-    st.selectbox('Current Status', options=["In Progress", "Blocked", "Completed"],
-                     index=None, placeholder='Select status', key='current_status')
-
-
-    if stage_val in ['Process Improvements', 'Automation', 'Tool Building', 'Training / KT Given', 'Training / KT Received']:
-        st.selectbox('Value Added Workstream?', options=workstreams_list_delivery,
-                     index=None, placeholder='Select workstream', key='workstream_value_added')
-        
-    if stage_val in ['Process Improvements', 'Automation', 'Tool Building']:
-        st.text_input('Broader View of Enhancements Made', key='broader_view')
-        st.text_input('Detailed Description of Enhancement / Tool / Automation', key='efficiency_description')
-
-    if stage_val in ['Automation', 'Tool Building']:
-        st.text_input('Manual v/s Automated workflow gain', key='manual_against_automation')
-
-    elif workstream in ['Research and Development']:
         st.text_input('In-detail Explaination of the progress / trials', key='rnd_explaination')
+        
+        st.selectbox('Current Status', options=["In Progress", "Blocked", "Completed"],
+                                index=None, placeholder='Select status', key='current_status')
     
-    
-    elif workstream not in ['Research and Development', 'House Help', 'Productivity & Enablement']:
-        st.selectbox('Next Steps', options = ['Still Processing', 'Awaiting Response - GC', 'Peer Review - EQ', 'Final QA - GC'], 
-                 key='next_steps', placeholder = 'Select Next Status', index = None)
     st.number_input('Time Spent (hours)', key='time_spent', step=0.5, format="%.2f", min_value = 0.0, max_value = 8.0)
+        
+        
 
 st.markdown("""
     <style>

@@ -681,7 +681,7 @@ def page2():
             ops_summary = get_workstream_ops_summary(week_df)
             ops_summary = ops_summary.rename(columns={
                 'workstream_name': 'Workstream',
-                'total_touched': 'Projects Planned',
+                'total_touched': 'Projects Kicked-off',
                 'completed_count': 'Projects Completed',
                 'all_projects': 'All Projects',
                 'in_progress_projects': 'In Progress Projects',

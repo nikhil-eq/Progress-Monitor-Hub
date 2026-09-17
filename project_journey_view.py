@@ -110,7 +110,7 @@ def build_journey_timeline_figure(daily: pd.DataFrame, status_colors: dict, bloc
             marker=dict(color=blocked_color, line=dict(width=0)),
             showlegend=False,
             hovertemplate=(
-                f"<b>🔴 Blocked</b><br>"
+                f"<b>🔴 Awaiting GC Response</b><br>"
                 f"{x0.strftime('%d %b %Y')} – {x1.strftime('%d %b %Y')}<br>"
                 f"With GC on decision points"
                 + "<extra></extra>"
@@ -304,7 +304,7 @@ def page_project_journey():
         &nbsp;&nbsp;
         🟢 <b>Completed</b>
         &nbsp;&nbsp;
-        🔴 <b>Blocked</b>
+        🔴 <b>Awaiting GC Response</b>
         &nbsp;&nbsp;
         ⚠️ hatched / red-bordered = rework
         <br>

@@ -67,6 +67,22 @@ def load_tool_usage_summary() -> tuple[pd.DataFrame, pd.DataFrame]:
 
     return summary_tools_automation, summary_process_improvements
 
+#----------------------------------------------------------
+#                       Research and Development
+#----------------------------------------------------------
+
+TARGET_WORKSTREAM = 'research and development'
+
+
+def load_rd_log() -> pd.DataFrame:
+    df = load_data()
+
+    mask = df['workstream_name'].str.lower() == TARGET_WORKSTREAM
+    rd_df = df[mask].copy()
+
+    rd_df = rd_df.sort_values('date', ascending=False)
+    return rd_df[['user_name', 'stage', 'rnd_explaination', 'time_spent']]
+
 
 # --------------------------------------------------
 #                   STYLING HELPER
@@ -116,6 +132,24 @@ def page5():
     st.markdown('#### Process Improvements')
     st.dataframe(summary_process_improvements_df, use_container_width=True,
                  height=min(900, 60 + 35 * len(summary_process_improvements_df)))
+    
+    st.markdown('#### Research and Development')
+
+    rd_df = load_rd_log()
+
+    if rd_df.empty:
+        st.markdown('_No Research and Development entries found._')
+        return
+
+    result = rd_df.rename(columns={
+        'user_name': 'Team Member',
+        'stage': 'Stage',
+        'rnd_explaination': 'Description',
+        'time_spent': 'Time Spent (hrs)',
+    })
+
+    st.markdown(f"**{len(result)}** entries logged")
+    st.dataframe(result, use_container_width=True, height=min(900, 60 + 35 * len(result)))
 
 
 page5()
