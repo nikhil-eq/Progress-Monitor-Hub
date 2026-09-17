@@ -281,46 +281,103 @@ def build_workstream_completion_figure(detail: pd.DataFrame) -> go.Figure:
 
 def build_top_completers_figure(detail: pd.DataFrame, month_df: pd.DataFrame) -> go.Figure | None:
     """
-    Horizontal bar: bar length is total hours each person logged this month;
-    the label drawn inside the bar is how many projects they completed.
-    Ranked by hours (longest bar on top). Returns None if nobody completed
-    anything (caller should handle that).
+    Horizontal STACKED bar per person: one segment per workstream. Segment
+    length = hours that person logged on the projects they completed in that
+    workstream this month; the text inside each segment is how many projects
+    they completed in that workstream. Ranked by total hours (longest on top).
+    Returns None if nobody completed anything.
     """
     completed = detail[detail['is_completed']]
     if completed.empty:
         return None
 
-    completed_counts = completed.groupby('completed_by').size()
+    # Hours the completer logged specifically on the project(s) they completed,
+    # split out by workstream (not their total hours for the whole month).
+    completed_hours = (
+        month_df.merge(
+            completed[['workstream_name', 'project_name', 'completed_by']],
+            left_on=['workstream_name', 'project_name', 'user_name'],
+            right_on=['workstream_name', 'project_name', 'completed_by'],
+            how='inner',
+        )
+        .groupby(['completed_by', 'workstream_name'], as_index=False)[TIME_COLUMN]
+        .sum()
+    )
 
-    hours_by_user = month_df.groupby('user_name')[TIME_COLUMN].sum()
-    hours = hours_by_user.reindex(completed_counts.index).fillna(0.0)
+    completed_counts = (
+        completed.groupby(['completed_by', 'workstream_name'])
+                 .size()
+                 .reset_index(name='count')
+    )
 
-    order = hours.sort_values(ascending=True).index
-    hours = hours.loc[order]
-    completed_counts = completed_counts.loc[order]
+    merged = completed_counts.merge(
+        completed_hours, on=['completed_by', 'workstream_name'], how='left'
+    )
+    merged[TIME_COLUMN] = merged[TIME_COLUMN].fillna(0.0)
 
-    fig = go.Figure(go.Bar(
-        x=hours.values, y=hours.index, orientation='h',
-        marker_color='#4da3ff',
-        text=[f"{c} completed" for c in completed_counts.values],
-        textposition='inside', insidetextanchor='middle',
-        textfont=dict(color='#f5f8ff', size=11),
-        hoverinfo="skip",
-    ))
-    max_val = max(hours.values.max(), 1)
+    # Order people top-to-bottom by their total completed-project hours
+    user_totals = merged.groupby('completed_by')[TIME_COLUMN].sum().sort_values(ascending=True)
+    users_order = user_totals.index.tolist()
+
+    # Keep a stable workstream order (canonical list first, then anything else)
+    present = merged['workstream_name'].unique().tolist()
+    workstreams_present = [w for w in workstreams_list_delivery if w in present]
+    workstreams_present += [w for w in present if w not in workstreams_present]
+
+    palette = [
+        '#4da3ff', '#f5a623', '#7ed321', '#bd10e0', '#50e3c2',
+        '#e94e77', '#9013fe', '#417505', '#ff6b6b', '#00b4d8',
+        '#f4a261', '#8ecae6', '#ffb703', '#06d6a0', '#c77dff',
+    ]
+
+    fig = go.Figure()
+    for i, ws in enumerate(workstreams_present):
+        sub = merged[merged['workstream_name'] == ws].set_index('completed_by').reindex(users_order)
+        x_vals = sub[TIME_COLUMN].fillna(0.0)
+        counts = sub['count'].fillna(0)
+
+        fig.add_trace(go.Bar(
+            y=users_order,
+            x=x_vals,
+            name=ws,
+            orientation='h',
+            marker_color=palette[i % len(palette)],
+            text=[f"{int(c)}" if c > 0 else "" for c in counts],
+            textposition='inside',
+            insidetextanchor='middle',
+            textfont=dict(color='#0d1b0d', size=10),
+            customdata=counts.to_numpy(),
+            hovertemplate=(
+                "<b>%{y}</b><br>" + ws + "<br>"
+                "Completed projects: %{customdata}<br>"
+                "Hours: %{x:.1f}"
+                "<extra></extra>"
+            ),
+        ))
+
     fig.update_layout(
-        title=dict(text='Hours | Projects Completed | Individual Memebers', font=dict(color='#e8eef4', size=16)),
-        xaxis=dict(title='Hours spent', color='#e8eef4', gridcolor='#1a2a3a',
-                   rangemode='tozero', range=[0, max_val * 1.15]),
+        barmode='stack',
+        title=dict(text='Hours | Projects Completed | Individual Members', font=dict(color='#e8eef4', size=16)),
+        xaxis=dict(
+            title='Hours spent (on completed projects)',
+            color='#e8eef4', gridcolor='#1a2a3a', rangemode='tozero'
+        ),
         yaxis=dict(title='', color='#e8eef4', automargin=True),
+        legend=dict(
+            orientation='h',
+            yanchor='top',
+            y=-0.15,
+            x=0,
+            xanchor='left',
+            font=dict(color='#e8eef4', size=9)
+        ),
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
-        height=max(300, 42 * len(hours)),
-        margin=dict(l=10, r=30, t=60, b=40),
-        showlegend=False,
+        height=max(340, 42 * len(users_order) + 100),  # a bit more height to fit legend
+        margin=dict(l=10, r=30, t=60, b=100),
+        showlegend = False
     )
     return fig
-
 
 # --------------------------------------------------
 #                   STYLING HELPER
