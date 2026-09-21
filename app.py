@@ -84,6 +84,7 @@ with st.sidebar:
 #              PAGE ROUTING
 # --------------------------------------------------
 public_pages = [
+    st.Page("home.py", title = "Home"),
     st.Page("daily_entry.py", title='Daily Log Entry'),
     st.Page("weekly_view.py", title='Weekly Snapshot'),
 ]

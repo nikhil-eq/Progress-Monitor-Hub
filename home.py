@@ -1,429 +1,627 @@
-import solara
+"""
+Home page: one-screen summary of what every other view knows.
+
+Sections
+  1. Headline (this week) + four project-status tiles, all time
+                                              (Delivered, Project Journey, Rework)
+  2. Who has / hasn't logged today            (Daily Log Entry)
+  3. Hours per week and per workstream        (Weekly Snapshot)
+  4. What open projects are waiting on
+  5. Needs attention: blocked, gone quiet, rework   (Project Journey / Delivered)
+  6. Since inception + monthly completions    (Delivered, Monthly, Lean)   [admin only]
+  7. Latest log entries
+  8. Links to every other page, each with a live figure
+
+Definitions used throughout (same as the existing views, so numbers agree):
+  * Week        = Thursday to Wednesday (db.load_data)
+  * Completed   = an entry with status "completed" in a stage other than
+                  Peer Review (delivered_view / monthly_view)
+  * Open        = project with no such completed entry
+  * In flight   = open AND last touched within OPEN_WINDOW_DAYS, so projects
+                  abandoned long ago don't inflate "blocked" / "waiting on"
+"""
+import html
+import re
+
 import pandas as pd
-from pathlib import Path
-from datetime import date, datetime, timedelta
+import plotly.graph_objects as go
+import streamlit as st
 
-import solara.lab
+from db import load_data, workstreams_list_delivery
 
-refresh_trigger = solara.reactive(0)
+# --------------------------------------------------
+#                  SETTINGS
+# --------------------------------------------------
 
-COLORS = {
-    "bg_deep": "#242930",
-    "bg_card": "#111a25",
-    "bg_card_hover": "#162233",
-    "border": "#1a2a3a",
-    "border_light": "#243447",
-    "text_primary": "#e8eef4",
-    "text_secondary": "#8fa3b8",
-    "text_muted": "#5a6f85",
-    "accent_cyan": "#22d3ee",
-    "accent_green": "#34d399",
-    "accent_amber": "#fbbf24",
-    "accent_rose": "#fb7185",
-    "accent_violet": "#a78bfa",
+ALLOTTED_HOURS_PER_WEEK = 40     # same capacity weekly_view uses
+TREND_WEEKS = 10                 # weeks shown in the hours trend
+TEAM_LOOKBACK_DAYS = 56          # who counts as "on the team"
+OPEN_WINDOW_DAYS = 60            # open project touched within this = in flight
+QUIET_DAYS = 10                  # in flight + no entry for this long = "gone quiet"
+REWORK_LOOKBACK_DAYS = 30
+COMPLETION_MONTHS = 6
+
+# Lifetime / monthly / lean figures come from admin-only pages. Flip to True
+# if you want everyone to see them on the home page.
+SHOW_RESTRICTED_TO_EVERYONE = False
+
+PEER_REVIEW = 'peer review'
+INVALID_NAMES = {'', 'nan', 'none', 'null', 'nat'}
+
+INK = '#e8eef4'
+MUTED = '#9fb3c0'
+GRID = 'rgba(255,255,255,0.09)'
+TEAL = '#5eead4'
+VIOLET = '#a78bfa'
+SLATE = '#64748b'
+AMBER = '#fbbe24'
+ROSE = '#ff6373'
+ORANGE = '#fb923c'
+
+CATEGORY_COLORS = {'Delivery': TEAL, 'R&D': VIOLET, 'Enablement & other': SLATE}
+
+WAITING_COLORS = {
+    'Still Processing': AMBER,
+    'Awaiting Response - GC': ROSE,
+    'Final QA - GC': ORANGE,
+    'Peer Review - EQ': TEAL,
 }
 
-COLORS_NEW = {
-    "bg_deep": "#7DB3BC",
-    "bg_card": "#a3b5ac",
-    "bg_card_hover": "#C5B7C5",
-    "border": "#b5bcc2",
-    "border_light": "#B0C5DF",
-    "text_primary": "#000000",
-    "text_secondary": "#464646",
-    "text_muted": "#5a6f85",
-    "accent_cyan": "#22d3ee",
-    "accent_green": "#34d399",
-    "accent_amber": "#fbbf24",
-    "accent_rose": "#fb7185",
-    "accent_violet": "#a78bfa",
-}
-
-workstreams_list_delivery = [
-    'Initial Stratification - HIR',
-    'Initial Stratification - NFMR',
-    'Restratification - HIR',
-    'Restratification - NFMR',
-    'Restratification - Regen Check',
-    'Change Detection',
-    'WS1:Paddock Mapping and Digitization',
-    'Fire Impact Assessment',
-    'Grid Creation',
-    'Spatial Data Cleaning and Ingestion',
-    'AD Survey Packages',
-    'Field Survey Packages',
-    'Adhoc Analysis',
-    'Carbon Plus',
-]
-
-NAV_CARDS = [
-    {
-        "title": "Daily Entry",
-        "path": "/daily-entry",
-        "desc": "Log your daily work, hours, and project updates.",
-        "icon": "📝",
-        "accent": COLORS["accent_cyan"],
-    },
-    {
-        "title": "Weekly View",
-        "path": "/weekly-view",
-        "desc": "Review weekly hours, statuses, and last actions per project.",
-        "icon": "📅",
-        "accent": COLORS["accent_green"],
-    },
-    {
-        "title": "Monthly View",
-        "path": "/monthly-view",
-        "desc": "Monthly project status snapshot and completion counts.",
-        "icon": "📊",
-        "accent": COLORS["accent_amber"],
-    },
-    {
-        "title": "Lifetime View",
-        "path": "/delivered-view",
-        "desc": "Lifetime completed projects by workstream and month.",
-        "icon": "✅",
-        "accent": COLORS["accent_violet"],
-    },
-    {
-        "title": "Efficiency View",
-        "path": "/efficiency-view",
-        "desc": "Tools, automation, and process improvements tracker.",
-        "icon": "⚡",
-        "accent": COLORS["accent_cyan"],
-    },
-    {
-        "title": "R&D View",
-        "path": "/rnd-view",
-        "desc": "Research and development progress and trials log.",
-        "icon": "🔬",
-        "accent": COLORS["accent_rose"],
-    },
-]
+# Some rows are stored as "WS1:Paddock" and others as "WS1: Paddock".
+# Normalise both sides so they group together.
+def _norm_ws(name: str) -> str:
+    return re.sub(r':\s*', ': ', str(name))
 
 
-# ── Data helpers ──
-from db import load_data
+DELIVERY = {_norm_ws(w) for w in workstreams_list_delivery}
+
+admin_emails = set(st.secrets.get("admin_emails", []))
+
+user_email = st.user.email if st.user.is_logged_in else None
+is_admin = bool(user_email and user_email.lower() in {e.lower() for e in admin_emails})
 
 
-def get_summary_stats(df: pd.DataFrame) -> dict:
-    if df.empty:
-        return {
-            "total_hours_week": 0.0,
-            "projects_completed": 0,
-            "projects_in_progress": 0,
-            'projects_blocked': 0,
-            "active_team": 0,
-            "tools_built": 0,
-            "rnd_entries": 0,
-        }
+# --------------------------------------------------
+#                  DATA
+# --------------------------------------------------
 
-    this_week_start = pd.Timestamp(date.today() - timedelta(days=date.today().weekday()))
-    week_df = df[df['week_start'] == this_week_start]
-
-    # Completed projects (excluding peer review)
-    eligible = df[df['stage'].str.lower() != 'peer review']
-    completed_mask = eligible['current_status'].str.lower() == 'completed'
-    completed_projects = eligible[completed_mask].groupby(['workstream_name', 'project_name']).ngroups
-
-    # In progress
-    in_progress_mask = df['current_status'].str.lower() == 'in progress'
-    in_progress_projects = df[in_progress_mask].groupby(['workstream_name', 'project_name']).ngroups
-    
-    # blocked
-    blocked_mask = df['current_status'].str.lower() == 'blocked'
-    blocked_projects = df[blocked_mask].groupby(['workstream_name', 'project_name']).ngroups
-
-    # Tools / Automation count
-    tools_mask = (
-        (df['workstream_name'].str.lower() == 'miscellaneous')
-        & (df['stage'].str.lower().isin({'tool building', 'automation'}))
-    )
-    tools_built = df[tools_mask].groupby(['user_name', 'efficiency_description']).ngroups
-
-    # R&D entries
-    rnd_mask = df['workstream_name'].str.lower() == 'research and development'
-    rnd_entries = df[rnd_mask].shape[0]
-
-    return {
-        "total_hours_week": round(week_df['time_spent'].sum(), 1),
-        "projects_completed": completed_projects,
-        "projects_in_progress": in_progress_projects,
-        "projects_blocked": blocked_projects,
-        "active_team": df['user_name'].nunique(),
-        "tools_built": tools_built,
-        "rnd_entries": rnd_entries,
-    }
-
-
-def get_recent_activity(df: pd.DataFrame, n: int = 7) -> pd.DataFrame:
-    if df.empty:
-        return pd.DataFrame()
-    recent = df.sort_values('date', ascending=False).head(n)
-    return recent[['date', 'user_name', 'workstream_name', 'project_name', 'current_status', 'time_spent']].copy()
-
-
-# ── Components ──
-@solara.component
-def StatCard(label: str, value: str, accent_color: str):
-    with solara.Div(style={
-        "background": COLORS["bg_card"],
-        "border": f"1px solid {COLORS['border']}",
-        "borderRadius": "12px",
-        "padding": "20px",
-        "minWidth": "160px",
-        "flex": "1",
-        "transition": "all 0.2s ease",
-    }):
-        solara.Div(style={
-            "width": "4px",
-            "height": "40px",
-            "background": accent_color,
-            "borderRadius": "2px",
-            "marginBottom": "12px",
-        })
-        solara.Text(value, style={
-            "fontSize": "32px",
-            "fontWeight": "700",
-            "color": COLORS["text_primary"],
-            "fontFamily": "'Space Mono', monospace",
-            "lineHeight": "1.2",
-        })
-        solara.Text(label, style={
-            "fontSize": "13px",
-            "color": COLORS["text_secondary"],
-            "marginTop": "6px",
-            "fontFamily": "'DM Sans', sans-serif",
-            "letterSpacing": "0.3px",
-        })
-
-
-@solara.component
-def NavCard(title: str, path: str, desc: str, icon: str, accent: str):
-    router = solara.use_router()
-
-    with solara.Div(style={
-        "background": COLORS["bg_card"],
-        "border": f"1px solid {COLORS['border']}",
-        "borderRadius": "12px",
-        "padding": "24px",
-        "cursor": "pointer",
-        "transition": "all 0.2s ease",
-        "position": "relative",
-        "overflow": "hidden",
-    }, classes=["nav-card"], on_click=lambda: router.push(path)):
-        # Accent top border
-        solara.Div(style={
-            "position": "absolute",
-            "top": 0,
-            "left": 0,
-            "right": 0,
-            "height": "3px",
-            "background": accent,
-            "borderRadius": "12px 12px 0 0",
-        })
-        solara.Div(style={"fontSize": "28px", "marginBottom": "12px"}, children=[icon])
-        with solara.Column(style={
-            "background": "radial-gradient(circle, rgba(34,211,238,0.08) 0%, transparent 70%)",
-            "borderRadius": "50%",
-            "pointerEvents": "none",
-        }):
-            solara.Text(title, style={
-                "fontSize": "17px",
-                "fontWeight": "600",
-                "color": COLORS["text_primary"],
-                "marginBottom": "6px",
-                "fontFamily": "'DM Sans', sans-serif",
-            })
-            solara.Text(desc, style={
-                "fontSize": "13px",
-                "color": COLORS["text_secondary"],
-                "lineHeight": "1.5",
-                "fontFamily": "'DM Sans', sans-serif",
-            })
-
-
-
-@solara.component
-def RecentActivityTable(df: pd.DataFrame):
-    if df.empty:
-        solara.Div(style={
-            "textAlign": "center",
-            "padding": "40px 20px",
-            "color": COLORS["text_muted"],
-        }, children=[
-            "📭 No recent activity found. Start logging your work in Daily Entry!"
-        ])
-        return
-    
-    with solara.Div(style = {"background": "radial-gradient(circle, rgba(34,211,238,0.08) 0%, transparent 70%)",
-            "borderRadius": "50%",
-            "pointerEvents": "none"}):
-
-        solara.Markdown("### Recent Activity", style = {"color": 'white'})
-        display_df = df.copy()
-        display_df['date'] = display_df['date'].dt.strftime('%d %b %Y')
-        display_df = display_df.rename(columns={
-            'date': 'Date',
-            'user_name': 'Team Member',
-            'workstream_name': 'Workstream',
-            'project_name': 'Project',
-            'current_status': 'Status',
-            'time_spent': 'Hours',
-        })
-        solara.DataFrame(display_df)
-
-
-@solara.component
-def HeroSection():
-    today = date.today().strftime("%A, %d %B %Y")
-    with solara.Div(style={
-        "background": f"linear-gradient(135deg, {COLORS['bg_deep']} 0%, #0d1a2a 60%, #081a10 100%)",
-        "border": f"1px solid {COLORS['border']}",
-        "borderRadius": "16px",
-        "padding": "36px 32px",
-        "marginBottom": "28px",
-        "position": "relative",
-        "overflow": "hidden",
-    }): 
-        # Decorative glow
-        solara.Div(style={
-            "position": "absolute",
-            "top": "-60px",
-            "right": "-60px",
-            "width": "200px",
-            "height": "200px",
-            "background": "radial-gradient(circle, rgba(34,211,238,0.08) 0%, transparent 70%)",
-            "borderRadius": "50%",
-            "pointerEvents": "none",
-        })
-        with solara.Column(style={
-            # "position": "absolute",
-            # "top": "-60px",
-            # "right": "-60px",
-            # "width": "200px",
-            # "height": "200px",
-            "background": "radial-gradient(circle, rgba(34,211,238,0.08) 0%, transparent 70%)",
-            "borderRadius": "50%",
-            "pointerEvents": "none",
-        }):
-            solara.Text(
-                "EQ < > GC Work Log",
-                style={
-                    "fontSize": "28px",
-                    "fontWeight": "700",
-                    "color": COLORS["text_primary"],
-                    "fontFamily": "'Arial', sans-serif",
-                    "letterSpacing": "-0.5px",
-                },
-            )
-
-            solara.Text(
-                f"{today}  ·  Geospatial Operations Dashboard",
-                style={
-                    "fontSize": "14px",
-                    "color": COLORS["text_secondary"],
-                    "fontFamily": "'DM Sans', sans-serif",
-                    "marginTop": "4px",
-                },
-            )
-
-@solara.component
-def Page():
-
-    # Force reactivity refresh
-    _ = refresh_trigger.value
+@st.cache_data(ttl=120, show_spinner='Fetching latest entries…')
+def fetch_log():
+    """Cached for 2 minutes so the home page doesn't hit Apps Script on every
+    click. The Refresh button clears it."""
     df = load_data()
-    stats = get_summary_stats(df)
-    recent = get_recent_activity(df)
+    stamp = pd.Timestamp.now(tz='Asia/Kolkata').strftime('%d %b, %H:%M')
+    return df, stamp
 
-    solara.Title("EQ <> GC - Project Management and Planning")
 
-    # Custom CSS for hover effects
-    solara.HTML(tag="style", unsafe_innerHTML="""
-    .nav-card:hover {
-        background: #162233 !important;
-        border-color: #2a3f55 !important;
-        transform: translateY(-2px);
-    }
-    .nav-card:active {
-        transform: translateY(0);
-    }
+def prepare(raw: pd.DataFrame) -> pd.DataFrame:
+    d = raw.copy()
 
-    /* make the DataFrame table transparent / dark-theme friendly */
-    .v-data-table,
-    .v-data-table__wrapper,
-    .v-table,
-    .v-table__wrapper {
-        background: transparent !important;
-    }
-    .v-data-table table,
-    .v-data-table thead,
-    .v-data-table tbody,
-    .v-data-table tr {
-        background: transparent !important;
-    }
-    .v-data-table th,
-    .v-data-table td {
-        background: transparent !important;
-        color: #e8eef4 !important;
-        border-bottom: 1px solid #1a2a3a !important;
-        border-right: 1px solid #1a2a3a !important;
-        padding: 0 16px !important;
-    }
-    .v-data-table th:last-child,
-    .v-data-table td:last-child {
-        border-right: none !important;
-    }
-    .v-data-table tbody tr:hover {
-        background: #162233 !important;
-    }
-    .v-data-footer {
-        background: transparent !important;
-        color: #8fa3b8 !important;
-    }
-    """)
+    text_cols = ['user_name', 'workstream_name', 'project_name', 'stage', 'current_status',
+                 'next_steps', 'work_type', 'is_rework', 'efficiency_description']
+    for col in text_cols:
+        if col not in d.columns:
+            d[col] = ''
+        d[col] = d[col].fillna('').astype(str).str.strip()
 
-    HeroSection()
+    d['time_spent'] = (
+        pd.to_numeric(d['time_spent'], errors='coerce').fillna(0.0)
+        if 'time_spent' in d.columns else 0.0
+    )
 
-    # ── Stats Row ──
-    with solara.Div(style={
-        "display": "flex",
-        "flexWrap": "wrap",
-        "gap": "16px",
-        "marginBottom": "28px",
-    }):
-        StatCard("  Hours this week", f"{stats['total_hours_week']}", COLORS["accent_cyan"])
-        StatCard("  Projects completed", f"{stats['projects_completed']}", COLORS["accent_green"])
-        StatCard("  In progress", f"{stats['projects_in_progress']}", COLORS["accent_amber"])
-        StatCard("  Blocked", f"{stats['projects_blocked']}", COLORS["accent_rose"])
-        StatCard("  Tools built", f"{stats['tools_built']}", COLORS["accent_cyan"])
+    d = d[d['date'].notna()].copy()
+    d['date'] = pd.to_datetime(d['date']).dt.normalize()
+    d = d[~d['user_name'].str.lower().isin(INVALID_NAMES)]
+    d = d.reset_index(drop=True)          # keeps sheet order for "latest entry" tie-breaks
 
-    # ── Navigation Grid ──
-    solara.Markdown("## Quick Navigation")
-    with solara.Div(style={
-        "display": "grid",
-        "gridTemplateColumns": "repeat(auto-fit, minmax(260px, 1fr))",
-        "gap": "16px",
-        "marginBottom": "28px",
-    }):
-        for card in NAV_CARDS:
-            NavCard(card["title"], card["path"], card["desc"], card["icon"], card["accent"])
+    d['workstream_name'] = d['workstream_name'].map(_norm_ws)
+    d['status'] = d['current_status'].str.lower()
+    d['week_start'] = d['date'] - pd.to_timedelta((d['date'].dt.weekday - 3) % 7, unit='D')
 
-    # ── Recent Activity ──
-    with solara.Div(style={
-        "background": COLORS["bg_card"],
-        "border": f"1px solid {COLORS['border']}",
-        "borderRadius": "12px",
-        "padding": "24px",
-    }):
-        RecentActivityTable(recent)
+    in_delivery = d['workstream_name'].isin(DELIVERY)
+    is_rnd = (
+        (d['work_type'].str.lower() == 'r&d')
+        | (d['workstream_name'].str.lower() == 'research and development')
+    )
+    d['category'] = 'Enablement & other'
+    d.loc[in_delivery, 'category'] = 'Delivery'
+    d.loc[is_rnd, 'category'] = 'R&D'
 
-    # ── Refresh button ──
-    with solara.Div(style={"marginTop": "20px", "textAlign": "left"}):
-        solara.Button(
-            label="🔄 Refresh",
-            on_click=lambda: refresh_trigger.set(refresh_trigger.value + 1),
-            color="primary",
-            text=True,
+    d['is_project'] = in_delivery & ~d['project_name'].str.lower().isin(INVALID_NAMES)
+    return d
+
+
+def build_project_table(d: pd.DataFrame) -> pd.DataFrame:
+    """One row per (workstream, project) with latest state, completion and hours."""
+    keys = ['workstream_name', 'project_name']
+    p = d[d['is_project']].sort_values('date', kind='stable')
+
+    latest = (
+        p.groupby(keys, sort=False).tail(1)
+         [keys + ['date', 'status', 'stage', 'user_name', 'next_steps']]
+         .rename(columns={'date': 'last_date', 'status': 'latest_status',
+                          'stage': 'latest_stage', 'user_name': 'last_by'})
+    )
+    eligible = p[(p['stage'].str.lower() != PEER_REVIEW) & (p['status'] == 'completed')]
+    done = (
+        eligible.groupby(keys, sort=False).tail(1)[keys + ['date', 'user_name']]
+                .rename(columns={'date': 'completed_date', 'user_name': 'completed_by'})
+    )
+    hours = p.groupby(keys, as_index=False)['time_spent'].sum().rename(columns={'time_spent': 'hours'})
+
+    t = latest.merge(done, on=keys, how='left').merge(hours, on=keys, how='left')
+    t['is_complete'] = t['completed_date'].notna()
+    return t
+
+
+# --------------------------------------------------
+#                  SMALL HELPERS
+# --------------------------------------------------
+
+def plural(n: int, one: str, many: str | None = None) -> str:
+    return f"{n} {one if n == 1 else (many or one + 's')}"
+
+
+def in_range(frame: pd.DataFrame, col: str, start, end) -> pd.DataFrame:
+    return frame[(frame[col] >= start) & (frame[col] <= end)]
+
+
+def count_projects(frame: pd.DataFrame) -> int:
+    proj = frame[frame['is_project']]
+    return len(proj[['workstream_name', 'project_name']].drop_duplicates())
+
+
+# --------------------------------------------------
+#                  STYLING
+# --------------------------------------------------
+
+def inject_css():
+    st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap');
+
+    .hm-date { color: #9fb3c0; font-size: 0.95rem; margin: 0 0 0.35rem; }
+    .hm-headline {
+        font-family: 'Bricolage Grotesque', 'Segoe UI', sans-serif;
+        font-weight: 700; font-size: clamp(1.8rem, 3.4vw, 2.7rem);
+        line-height: 1.08; letter-spacing: -0.02em; max-width: 30ch; margin: 0;
+    }
+    .hm-subline { color: #c9d6de; font-size: 1.1rem; margin: 0.6rem 0 0; }
+
+    .hm-kpis {
+        display: grid; grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr));
+        border-top: 1px solid rgba(255,255,255,0.22);
+        border-bottom: 1px solid rgba(255,255,255,0.12);
+        margin: 1.5rem 0 0.7rem;
+    }
+    .hm-kpi { padding: 1rem 0.9rem 1rem 1.1rem; border-left: 1px solid rgba(255,255,255,0.12); }
+    .hm-kpi:first-child { border-left: none; padding-left: 0; }
+    .hm-kpi-label { font-size: 0.88rem; color: #b7c7d1; }
+    .hm-kpi-value {
+        font-family: 'Bricolage Grotesque', 'Segoe UI', sans-serif;
+        font-size: 2.3rem; font-weight: 700; line-height: 1.15; margin: 0.1rem 0 0.15rem;
+    }
+    .hm-kpi-note { font-size: 0.8rem; color: #9fb3c0; min-height: 1.1em; }
+    .hm-kpi-note.good { color: #5eead4; }
+    .hm-kpi-note.bad  { color: #ff8a98; }
+    @media (max-width: 1000px) {
+        .hm-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .hm-kpi, .hm-kpi:first-child { border-left: none; padding-left: 0; border-top: 1px solid rgba(255,255,255,0.10); }
+    }
+    @media (max-width: 560px) { .hm-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+    .hm-today { font-size: 0.95rem; color: #c9d6de; margin: 0.2rem 0 0; }
+    .hm-today b { color: #ffffff; }
+
+    .hm-sec { margin: 2.4rem 0 0.5rem; }
+    .hm-sec-title {
+        font-family: 'Bricolage Grotesque', 'Segoe UI', sans-serif;
+        font-size: 1.3rem; font-weight: 700; letter-spacing: -0.01em;
+    }
+    .hm-sec-sub { color: #9fb3c0; font-size: 0.9rem; margin-top: 0.1rem; }
+    </style>
+    """, unsafe_allow_html=True)
+
+
+def section(title: str, sub: str = ''):
+    sub_html = f'<div class="hm-sec-sub">{html.escape(sub)}</div>' if sub else ''
+    st.markdown(
+        f'<div class="hm-sec"><div class="hm-sec-title">{html.escape(title)}</div>{sub_html}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def kpi_band(items):
+    """items: (label, value, note, css_class)"""
+    cells = ''.join(
+        f'<div class="hm-kpi"><div class="hm-kpi-label">{html.escape(label)}</div>'
+        f'<div class="hm-kpi-value">{html.escape(str(value))}</div>'
+        f'<div class="hm-kpi-note {css}">{html.escape(note)}</div></div>'
+        for label, value, note, css in items
+    )
+    st.markdown(f'<div class="hm-kpis" style="--cols:{len(items)}">{cells}</div>', unsafe_allow_html=True)
+
+
+def style_fig(fig: go.Figure, height: int, **layout) -> go.Figure:
+    fig.update_layout(
+        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color=INK), height=height,
+        margin=dict(l=8, r=8, t=28, b=8), **layout,
+    )
+    fig.update_xaxes(gridcolor=GRID, zeroline=False, color=INK)
+    fig.update_yaxes(gridcolor=GRID, zeroline=False, color=INK)
+    return fig
+
+
+# `use_container_width` is deprecated in newer Streamlit in favour of
+# width='stretch'. Try the new spelling first so this page works on both.
+def show_fig(fig: go.Figure, key: str):
+    try:
+        st.plotly_chart(fig, width='stretch', key=key, config={'displayModeBar': False})
+    except (TypeError, st.errors.StreamlitAPIException):
+        st.plotly_chart(fig, use_container_width=True, key=key, config={'displayModeBar': False})
+
+
+def show_df(frame: pd.DataFrame, height: int):
+    try:
+        st.dataframe(frame, hide_index=True, width='stretch', height=height)
+    except (TypeError, st.errors.StreamlitAPIException):
+        st.dataframe(frame, hide_index=True, use_container_width=True, height=height)
+
+
+# --------------------------------------------------
+#                  CHARTS
+# --------------------------------------------------
+
+def fig_weekly_trend(d: pd.DataFrame, cur_ws: pd.Timestamp) -> go.Figure:
+    weeks = [cur_ws - pd.Timedelta(weeks=i) for i in range(TREND_WEEKS - 1, -1, -1)]
+    sub = d[d['week_start'].isin(weeks)]
+    cats = list(CATEGORY_COLORS)
+
+    if sub.empty:
+        piv = pd.DataFrame(0.0, index=weeks, columns=cats)
+    else:
+        piv = (sub.groupby(['week_start', 'category'])['time_spent'].sum()
+                  .unstack(fill_value=0.0)
+                  .reindex(index=weeks, columns=cats, fill_value=0.0))
+
+    labels = [w.strftime('%d %b') for w in weeks]
+    labels[-1] = 'This week'
+    totals = piv.sum(axis=1)
+    capacity = (sub.groupby('week_start')['user_name'].nunique()
+                   .reindex(weeks, fill_value=0) * ALLOTTED_HOURS_PER_WEEK)
+
+    fig = go.Figure()
+    for cat in cats:
+        fig.add_trace(go.Bar(
+            x=labels, y=piv[cat], name=cat, marker_color=CATEGORY_COLORS[cat],
+            hovertemplate=f'{cat}: %{{y:.1f}} h<extra></extra>',
+        ))
+    fig.add_trace(go.Scatter(
+        x=labels, y=totals, mode='text', showlegend=False, hoverinfo='skip',
+        text=[f'{v:.0f}' if v else '' for v in totals], textposition='top center',
+        textfont=dict(color=INK, size=12),
+    ))
+    fig.add_trace(go.Scatter(
+        x=labels, y=capacity, mode='lines', name=f'Capacity ({ALLOTTED_HOURS_PER_WEEK} h per person logging)',
+        line=dict(color=MUTED, dash='dot', width=2),
+        hovertemplate='Capacity: %{y:.0f} h<extra></extra>',
+    ))
+    style_fig(
+        fig, 340, barmode='stack', bargap=0.3,
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, x=0, font=dict(color=INK)),
+    )
+    fig.update_xaxes(type='category', categoryorder='array', categoryarray=labels)
+    fig.update_yaxes(title='Hours', range=[0, max(totals.max(), capacity.max(), 1) * 1.18])
+    return fig
+
+
+def fig_workstream_hours(this_week: pd.DataFrame) -> go.Figure:
+    g = (this_week.groupby('workstream_name')
+                  .agg(hours=('time_spent', 'sum'), cat=('category', 'first'))
+                  .query('hours > 0').sort_values('hours', ascending=False))
+    names = list(g.index[:8])
+    values = list(g['hours'][:8])
+    colors = [CATEGORY_COLORS[c] for c in g['cat'][:8]]
+    rest = g['hours'][8:].sum()
+    if rest > 0:
+        names.append('Everything else')
+        values.append(rest)
+        colors.append(SLATE)
+
+    fig = go.Figure(go.Bar(
+        x=values, y=names, orientation='h', marker_color=colors,
+        text=[f'{v:.1f}' for v in values], textposition='outside', cliponaxis=False,
+        hovertemplate='<b>%{y}</b><br>%{x:.1f} h<extra></extra>',
+    ))
+    style_fig(fig, max(240, 40 * len(names) + 60), bargap=0.3)
+    
+    fig.update_yaxes(autorange='reversed', automargin=True)
+    fig.update_xaxes(range=[0, max(values) * 1.2], title='Hours')
+    return fig
+
+
+def fig_waiting_on(inflight: pd.DataFrame) -> go.Figure:
+    steps = inflight['next_steps'].where(~inflight['next_steps'].str.lower().isin(INVALID_NAMES), 'Not stated')
+    counts = steps.value_counts()
+    fig = go.Figure(go.Bar(
+        x=counts.values, y=list(counts.index), orientation='h',
+        marker_color=[WAITING_COLORS.get(k, SLATE) for k in counts.index],
+        text=list(counts.values), textposition='outside', cliponaxis=False,
+        hovertemplate='<b>%{y}</b><br>%{x} projects<extra></extra>',
+    ))
+    style_fig(fig, max(220, 52 * len(counts) + 60), bargap=0.35)
+    fig.update_yaxes(autorange='reversed', automargin=True)
+    fig.update_xaxes(range=[0, counts.max() * 1.2], title='Open projects', dtick=1)
+    return fig
+
+
+def fig_monthly_completions(t: pd.DataFrame, today: pd.Timestamp) -> go.Figure:
+    months = pd.period_range(end=today.to_period('M'), periods=COMPLETION_MONTHS, freq='M')
+    done = t.dropna(subset=['completed_date'])
+    if done.empty:
+        counts = pd.Series(0, index=months)
+    else:
+        counts = (done.groupby(done['completed_date'].dt.to_period('M')).size()
+                      .reindex(months, fill_value=0))
+    labels = [m.strftime('%b %Y') for m in months]
+    fig = go.Figure(go.Bar(
+        x=labels, y=counts.values,
+        marker_color=[TEAL] * (len(labels) - 1) + ['#99f6e4'],
+        text=list(counts.values), textposition='outside', cliponaxis=False,
+        hovertemplate='%{x}: %{y} completed<extra></extra>',
+    ))
+    style_fig(fig, 300, bargap=0.35)
+    fig.update_xaxes(type='category')
+    fig.update_yaxes(title='Projects completed', range=[0, max(counts.max(), 1) * 1.25], dtick=1 if counts.max() < 8 else None)
+    return fig
+
+
+# --------------------------------------------------
+#                  TABLES
+# --------------------------------------------------
+
+def project_attention_table(frame: pd.DataFrame) -> pd.DataFrame:
+    out = frame[['workstream_name', 'project_name', 'latest_stage', 'last_by', 'last_date', 'days_since']].copy()
+    out['last_date'] = out['last_date'].dt.strftime('%d %b')
+    out.columns = ['Workstream', 'Project', 'Stage', 'Last worked by', 'Last update', 'Days ago']
+    return out
+
+
+def show_table(frame: pd.DataFrame, empty_msg: str):
+    if frame.empty:
+        st.caption(empty_msg)
+    else:
+        show_df(frame, min(420, 60 + 35 * len(frame)))
+
+
+# --------------------------------------------------
+#                  PAGE
+# --------------------------------------------------
+
+def page_home():
+    inject_css()
+
+    # ── data ──
+    try:
+        raw, fetched_at = fetch_log()
+    except Exception as exc:  # network / Apps Script hiccup
+        st.error(f"Couldn't load the log from Google Sheets: {exc}")
+        if st.button('Try again'):
+            st.rerun()
+        return
+
+    if raw.empty:
+        st.info('Nothing has been logged yet. Add the first entry from Daily Log Entry.')
+        st.page_link('daily_entry.py', label='Daily Log Entry', icon='📝')
+        return
+
+    d = prepare(raw)
+    if d.empty:
+        st.info('No dated entries found in the log yet.')
+        return
+
+    show_restricted = is_admin or SHOW_RESTRICTED_TO_EVERYONE
+
+    today = pd.Timestamp.now(tz='Asia/Kolkata').tz_localize(None).normalize()
+    cur_ws = today - pd.Timedelta(days=(today.weekday() - 3) % 7)
+    cur_we = cur_ws + pd.Timedelta(days=6)
+
+    t = build_project_table(d)
+    t['days_since'] = (today - t['last_date']).dt.days
+    open_projects = t[~t['is_complete']]
+    inflight = open_projects[open_projects['days_since'] <= OPEN_WINDOW_DAYS]
+
+    this_week = in_range(d, 'date', cur_ws, cur_we)
+
+    team = sorted(
+        set(d.loc[d['date'] >= today - pd.Timedelta(days=TEAM_LOOKBACK_DAYS), 'user_name'])
+        | set(this_week['user_name'])
+    )
+
+    # ── this week (used by the headline) ──
+    hours_now = float(this_week['time_spent'].sum())
+    projects_now = count_projects(this_week)
+    completed_now = len(in_range(t, 'completed_date', cur_ws, cur_we))
+    rework_now = int((this_week['is_rework'] != '').sum())
+
+    # ── all-time project status (used by the tiles) ──
+    completed_total = int(t['is_complete'].sum())
+    blocked = inflight[inflight['latest_status'] == 'blocked']
+    in_progress = inflight[inflight['latest_status'] != 'blocked']   # open and not blocked
+    stale_open = len(open_projects) - len(inflight)
+
+    rework_rows = d[(d['is_rework'] != '') & d['workstream_name'].isin(DELIVERY)]
+    rework_times = len(rework_rows)
+    rework_projects = count_projects(rework_rows)
+
+    # ── header ──
+    head_col, refresh_col = st.columns([6, 1])
+    with head_col:
+        st.markdown(
+            f'<div class="hm-date">{today.strftime("%A, %d %B %Y")}. '
+            f'This week runs {cur_ws.strftime("%d %b")} to {cur_we.strftime("%d %b")}.</div>',
+            unsafe_allow_html=True,
         )
+        if hours_now > 0 and projects_now:
+            headline = f'{hours_now:,.0f} hours logged this week across {plural(projects_now, "project")}'
+        elif hours_now > 0:
+            headline = f'{hours_now:,.0f} hours logged this week'
+        else:
+            headline = 'Nothing logged yet this week'
+        st.markdown(f'<h1 class="hm-headline">{html.escape(headline)}</h1>', unsafe_allow_html=True)
+
+        parts = []
+        if completed_now:
+            parts.append(f'{completed_now} completed')
+        if len(blocked):
+            parts.append(f'{len(blocked)} blocked right now')
+        if rework_now:
+            parts.append(f'{rework_now} sent back for rework')
+        subline = (', '.join(parts) + '.') if parts else 'No completions, blockers or rework so far.'
+        st.markdown(f'<p class="hm-subline">{html.escape(subline)}</p>', unsafe_allow_html=True)
+    with refresh_col:
+        if st.button('Refresh data', key='home_refresh'):
+            fetch_log.clear()
+            st.rerun()
+        st.caption(f'Pulled {fetched_at} IST')
+
+    # ── status tiles (all time) ──
+    kpi_band([
+        ('Projects completed to date', completed_total,
+         f'across {t.loc[t["is_complete"], "workstream_name"].nunique()} workstreams', 'good' if completed_total else ''),
+        ('Projects in progress', len(in_progress),
+         f'open, not blocked. {plural(stale_open, "older project")} untouched {OPEN_WINDOW_DAYS}+ days not counted'
+         if stale_open else 'open, not blocked', ''),
+        ('Blocked / awaiting GC response', len(blocked), f'of {len(inflight)} open projects', 'bad' if len(blocked) else ''),
+        ('Times sent back for rework', rework_times, f'across {plural(rework_projects, "project")}',
+         'bad' if rework_times else ''),
+    ])
+
+    # ── who has logged today (weekdays only) ──
+    if today.weekday() < 5 and team:
+        logged = sorted(set(d.loc[d['date'] == today, 'user_name']))
+        pending = [u for u in team if u not in logged]
+        if not pending:
+            msg = '<b>Everyone has logged today.</b>'
+        elif not logged:
+            msg = f'Nobody has logged today yet: {html.escape(", ".join(pending))}.'
+        else:
+            msg = (f'Logged today: <b>{html.escape(", ".join(logged))}</b>. '
+                   f'Still to log: {html.escape(", ".join(pending))}.')
+        st.markdown(f'<div class="hm-today">{msg}</div>', unsafe_allow_html=True)
+
+    # ── hours ──
+    section('Hours per week',
+        f'Last {TREND_WEEKS} weeks, split by kind of work. The dotted line is {ALLOTTED_HOURS_PER_WEEK} h for everyone who logged that week.')
+    show_fig(fig_weekly_trend(d, cur_ws), 'home_trend')
+    
+    col_trend1, col_trend2 = st.columns(2)
+
+
+    with col_trend1:
+        section('Where the hours went this week')
+        if this_week['time_spent'].sum() > 0:
+            show_fig(fig_workstream_hours(this_week), 'home_ws_hours')
+        else:
+            st.caption('No hours logged this week yet.')
+    
+    with col_trend2:
+
+        section('What open projects are waiting on',
+                f'Latest "next step" on each open project kicked-off in the last {OPEN_WINDOW_DAYS} days.')
+        if inflight.empty:
+            st.caption('No open projects in flight.')
+        else:
+            show_fig(fig_waiting_on(inflight), 'home_waiting')
+
+    # ── needs attention ──
+    quiet = inflight[(inflight['latest_status'] != 'blocked') & (inflight['days_since'] > QUIET_DAYS)]
+    recent_rework = d[(d['is_rework'] != '') & (d['date'] >= today - pd.Timedelta(days=REWORK_LOOKBACK_DAYS))]
+
+    section('Needs attention')
+    tab_blocked, tab_quiet, tab_rework = st.tabs([
+        f'Blocked ({len(blocked)})',
+        f'Gone quiet ({len(quiet)})',
+        f'Rework, last {REWORK_LOOKBACK_DAYS} days ({len(recent_rework)})',
+    ])
+    with tab_blocked:
+        show_table(project_attention_table(blocked.sort_values('days_since', ascending=False)),
+                   'Nothing is blocked. 🎉')
+    with tab_quiet:
+        st.caption(f'Open, not blocked, and no entry for more than {QUIET_DAYS} days.')
+        show_table(project_attention_table(quiet.sort_values('days_since', ascending=False)),
+                   'Every open project has been touched recently.')
+    with tab_rework:
+        rw = recent_rework.sort_values('date', ascending=False)[
+            ['date', 'user_name', 'workstream_name', 'project_name', 'stage', 'is_rework']
+        ].copy()
+        rw['date'] = rw['date'].dt.strftime('%d %b')
+        rw.columns = ['Date', 'Team member', 'Workstream', 'Project', 'Stage', 'Triggered by']
+        show_table(rw, 'No rework flagged recently.')
+
+    # ── since inception (admin) ──
+    # section('Since inception')
+    if not show_restricted:
+        st.caption('Lifetime, monthly and lean-improvement figures are shown to admins. '
+                   'Sign in from the sidebar to see them.')
+    else:
+        avg_hours = t.loc[t['is_complete'], 'hours'].mean() if completed_total else None
+
+        ws_lower = d['workstream_name'].str.lower()
+        stage_lower = d['stage'].str.lower()
+        has_desc = ~d['efficiency_description'].str.lower().isin(INVALID_NAMES)
+        pe = (ws_lower == 'productivity & enablement') & has_desc
+        tools = d[pe & stage_lower.isin({'tool building', 'automation'})].groupby(
+            ['user_name', 'efficiency_description']).ngroups
+        process = d[pe & (stage_lower == 'process improvements')].groupby(
+            ['user_name', 'efficiency_description']).ngroups
+
+        rnd = d[d['category'] == 'R&D']
+
+        # kpi_band([
+        #     ('Average hours per delivery', f'{avg_hours:,.1f}' if avg_hours is not None else '–', 'logged on delivered projects', ''),
+        #     ('Hours logged, all time', f'{d["time_spent"].sum():,.0f}', f'since {d["date"].min().strftime("%d %b %Y")}', ''),
+        #     ('Lean improvements', tools + process, f'{tools} tools or automations, {process} process', ''),
+        #     ('R&D entries', len(rnd), f'{rnd["time_spent"].sum():,.0f} h spent', ''),
+        # ])
+
+        month_start = today.replace(day=1)
+        month_rows = d[(d['date'] >= month_start) & (d['category'] == 'Delivery')]
+        done_month = t[t['completed_date'] >= month_start]
+        top = done_month['completed_by'].value_counts()
+
+        section('Completions by month',
+                f'Projects completed in each of the last {COMPLETION_MONTHS} months, by the date of their final completed entry.')
+        show_fig(fig_monthly_completions(t, today), 'home_completions')
+
+        line = (f'{today.strftime("%B")}: {len(done_month)} completed, '
+                f'{count_projects(month_rows)} projects touched, '
+                f'{month_rows["time_spent"].sum():,.1f} delivery hours.')
+        if len(top):
+            line += f' Most completions: {top.index[0]} ({top.iloc[0]}).'
+        st.caption(line)
+ 
+
+    # ── links ──
+    section('Go to')
+    links = [
+        ('daily_entry.py', 'Daily Log Entry', '📝', 'Log today’s work', False),
+        ('weekly_view.py', 'Weekly Snapshot', '📅', f'{hours_now:,.0f} h logged this week', False),
+        ('weekly_planning.py', 'Weekly Planning Entry', '🗓️', 'Mark projects visible or received', True),
+        ('monthly_view.py', 'Monthly Recap', '📊', f'{len(t[t["completed_date"] >= today.replace(day=1)])} completed in {today.strftime("%B")}', True),
+        ('delivered_view.py', 'Delivered - Since Inception', '✅', f'{int(t["is_complete"].sum())} projects delivered', True),
+        ('efficiency_view.py', 'Lean Improvements', '⚡', 'Tools, automation and process fixes', True),
+        ('project_journey_view.py', 'Project Journey', '🧭', f'{len(blocked)} blocked, {len(quiet)} gone quiet', True),
+        ('rasci_view.py', 'RASCI Matrix', '🧩', 'Who owns each workstream', True),
+    ]
+    visible = [l for l in links if not l[4] or is_admin]
+    for start in range(0, len(visible), 4):
+        cols = st.columns(4)
+        for col, (path, label, icon, blurb, _) in zip(cols, visible[start:start + 4]):
+            with col:
+                st.page_link(path, label=label, icon=icon)
+                st.caption(blurb)
+
+
+page_home()
