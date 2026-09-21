@@ -84,7 +84,11 @@ def build_journey_timeline_figure(daily: pd.DataFrame, status_colors: dict, bloc
 
     all_days = pd.date_range(active_dates[0], active_dates[-1], freq='D')
     active_set = set(active_dates)
-    inactive_days = [d for d in all_days if d not in active_set]
+
+    inactive_days = [
+        d for d in all_days
+        if d not in active_set and d.weekday() < 5
+    ]
 
     gap_spans = []
     for d in inactive_days:
@@ -98,11 +102,11 @@ def build_journey_timeline_figure(daily: pd.DataFrame, status_colors: dict, bloc
 
     fig = go.Figure()
 
-    # gap shading as traces (not shapes) so gridlines stay behind it.
-    # added first so the real bars draw on top.
+    day_half = pd.Timedelta(hours=12)   # a bar is centred on midnight, so ±12h = exactly one day cell
+
     for start, end in gap_spans:
-        x0 = start - half_width
-        x1 = end + half_width
+        x0 = start - day_half
+        x1 = end + day_half
         fig.add_trace(go.Bar(
             x=[x0 + (x1 - x0) / 2],
             y=[y_top], base=[0],
@@ -111,7 +115,7 @@ def build_journey_timeline_figure(daily: pd.DataFrame, status_colors: dict, bloc
             showlegend=False,
             hovertemplate=(
                 f"<b>🔴 Awaiting GC Response</b><br>"
-                f"{x0.strftime('%d %b %Y')} – {x1.strftime('%d %b %Y')}<br>"
+                f"{start.strftime('%d %b %Y')} – {end.strftime('%d %b %Y')}<br>"
                 f"With GC on decision points"
                 + "<extra></extra>"
             ),
@@ -174,7 +178,7 @@ def build_journey_timeline_figure(daily: pd.DataFrame, status_colors: dict, bloc
     text_color = '#e8eef4'
     fig.update_layout(
         title=dict(text='Project Timeline', font=dict(color=text_color, size=16)),
-        xaxis=dict(title='Date', color=text_color, gridcolor='#1a2a3a', type='date', tickformat='%d %b'),
+        xaxis=dict(title='Date', color=text_color, gridcolor='#1a2a3a', type='date', tickformat='%d %b', rangebreaks=[dict(bounds=['sat', 'mon'])]),
         yaxis=dict(title='Hours', color=text_color, gridcolor='#1a2a3a', range=[0, y_top]),
         legend=dict(orientation='h', yanchor='bottom', y=1.02, x=0, font=dict(color=text_color)),
         paper_bgcolor='rgba(0,0,0,0)',
@@ -274,7 +278,7 @@ def page_project_journey():
     status_colors = {
         'in progress': 'rgba(251, 190, 36, 1)',    # was #fbbe24ff
         'completed':   '#34d399',
-        'blocked':     'rgba(179, 12, 37, 0.675)', # was #b30c25ac  (0xac/255 ≈ 0.675)
+        'blocked':     'rgba(255, 99, 115, 0.675)', # was #b30c25ac  (0xac/255 ≈ 0.675)
     }
     
     blocked_color = status_colors['blocked']
