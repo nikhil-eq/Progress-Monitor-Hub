@@ -470,7 +470,7 @@ def page3():
 
         col1, col2, col3 = st.columns(3)
         col1.metric("Completed", f"{int(completed_sum)}")
-        col2.metric("Touched", f"{int(touched_sum)}")
+        col2.metric("Kicked-off", f"{int(touched_sum)}")
         col3.metric("Total Hours", f"{time_sum:,.1f}")
 
     chart_col1, chart_col2 = st.columns(2)

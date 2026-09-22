@@ -5,10 +5,10 @@ Sections
   1. Headline (this week) + four project-status tiles, all time
                                               (Delivered, Project Journey, Rework)
   2. Who has / hasn't logged today            (Daily Log Entry)
-  3. Hours per week and per workstream        (Weekly Snapshot)
+  3. Hours per week (10-week trend)           (full breakdown -> Weekly Snapshot)
   4. What open projects are waiting on
   5. Needs attention: blocked, gone quiet, rework   (Project Journey / Delivered)
-  6. Since inception + monthly completions    (Delivered, Monthly, Lean)   [admin only]
+  6. Since inception summary                  (full chart -> Monthly Recap)   [admin only]
   7. Latest log entries
   8. Links to every other page, each with a live figure
 
@@ -39,7 +39,6 @@ TEAM_LOOKBACK_DAYS = 56          # who counts as "on the team"
 OPEN_WINDOW_DAYS = 60            # open project touched within this = in flight
 QUIET_DAYS = 10                  # in flight + no entry for this long = "gone quiet"
 REWORK_LOOKBACK_DAYS = 30
-COMPLETION_MONTHS = 6
 
 # Lifetime / monthly / lean figures come from admin-only pages. Flip to True
 # if you want everyone to see them on the home page.
@@ -169,6 +168,11 @@ def in_range(frame: pd.DataFrame, col: str, start, end) -> pd.DataFrame:
 def count_projects(frame: pd.DataFrame) -> int:
     proj = frame[frame['is_project']]
     return len(proj[['workstream_name', 'project_name']].drop_duplicates())
+
+
+def is_awaiting_gc(next_steps: pd.Series) -> pd.Series:
+    """True where the latest 'next step' is (case-insensitively) 'Awaiting Response - GC'."""
+    return next_steps.fillna('').astype(str).str.strip().str.lower() == 'awaiting response - gc'
 
 
 # --------------------------------------------------
@@ -316,31 +320,6 @@ def fig_weekly_trend(d: pd.DataFrame, cur_ws: pd.Timestamp) -> go.Figure:
     return fig
 
 
-def fig_workstream_hours(this_week: pd.DataFrame) -> go.Figure:
-    g = (this_week.groupby('workstream_name')
-                  .agg(hours=('time_spent', 'sum'), cat=('category', 'first'))
-                  .query('hours > 0').sort_values('hours', ascending=False))
-    names = list(g.index[:8])
-    values = list(g['hours'][:8])
-    colors = [CATEGORY_COLORS[c] for c in g['cat'][:8]]
-    rest = g['hours'][8:].sum()
-    if rest > 0:
-        names.append('Everything else')
-        values.append(rest)
-        colors.append(SLATE)
-
-    fig = go.Figure(go.Bar(
-        x=values, y=names, orientation='h', marker_color=colors,
-        text=[f'{v:.1f}' for v in values], textposition='outside', cliponaxis=False,
-        hovertemplate='<b>%{y}</b><br>%{x:.1f} h<extra></extra>',
-    ))
-    style_fig(fig, max(240, 40 * len(names) + 60), bargap=0.3)
-    
-    fig.update_yaxes(autorange='reversed', automargin=True)
-    fig.update_xaxes(range=[0, max(values) * 1.2], title='Hours')
-    return fig
-
-
 def fig_waiting_on(inflight: pd.DataFrame) -> go.Figure:
     steps = inflight['next_steps'].where(~inflight['next_steps'].str.lower().isin(INVALID_NAMES), 'Not stated')
     counts = steps.value_counts()
@@ -353,27 +332,6 @@ def fig_waiting_on(inflight: pd.DataFrame) -> go.Figure:
     style_fig(fig, max(220, 52 * len(counts) + 60), bargap=0.35)
     fig.update_yaxes(autorange='reversed', automargin=True)
     fig.update_xaxes(range=[0, counts.max() * 1.2], title='Open projects', dtick=1)
-    return fig
-
-
-def fig_monthly_completions(t: pd.DataFrame, today: pd.Timestamp) -> go.Figure:
-    months = pd.period_range(end=today.to_period('M'), periods=COMPLETION_MONTHS, freq='M')
-    done = t.dropna(subset=['completed_date'])
-    if done.empty:
-        counts = pd.Series(0, index=months)
-    else:
-        counts = (done.groupby(done['completed_date'].dt.to_period('M')).size()
-                      .reindex(months, fill_value=0))
-    labels = [m.strftime('%b %Y') for m in months]
-    fig = go.Figure(go.Bar(
-        x=labels, y=counts.values,
-        marker_color=[TEAL] * (len(labels) - 1) + ['#99f6e4'],
-        text=list(counts.values), textposition='outside', cliponaxis=False,
-        hovertemplate='%{x}: %{y} completed<extra></extra>',
-    ))
-    style_fig(fig, 300, bargap=0.35)
-    fig.update_xaxes(type='category')
-    fig.update_yaxes(title='Projects completed', range=[0, max(counts.max(), 1) * 1.25], dtick=1 if counts.max() < 8 else None)
     return fig
 
 
@@ -447,8 +405,11 @@ def page_home():
 
     # ── all-time project status (used by the tiles) ──
     completed_total = int(t['is_complete'].sum())
-    blocked = inflight[inflight['latest_status'] == 'blocked']
-    in_progress = inflight[inflight['latest_status'] != 'blocked']   # open and not blocked
+    # "Blocked / awaiting GC response" counts projects whose latest status is
+    # Blocked OR whose latest next step is "Awaiting Response - GC".
+    is_blocked = (inflight['latest_status'] == 'blocked') | is_awaiting_gc(inflight['next_steps'])
+    blocked = inflight[is_blocked]
+    in_progress = inflight[~is_blocked]   # open and not blocked / awaiting GC
     stale_open = len(open_projects) - len(inflight)
 
     rework_rows = d[(d['is_rework'] != '') & d['workstream_name'].isin(DELIVERY)]
@@ -469,7 +430,7 @@ def page_home():
             headline = f'{hours_now:,.0f} hours logged this week'
         else:
             headline = 'Nothing logged yet this week'
-        st.markdown(f'<h1 class="hm-headline">{html.escape(headline)}</h1>', unsafe_allow_html=True)
+        # st.markdown(f'<h1 class="hm-headline">{html.escape(headline)}</h1>', unsafe_allow_html=True)
 
         parts = []
         if completed_now:
@@ -479,12 +440,12 @@ def page_home():
         if rework_now:
             parts.append(f'{rework_now} sent back for rework')
         subline = (', '.join(parts) + '.') if parts else 'No completions, blockers or rework so far.'
-        st.markdown(f'<p class="hm-subline">{html.escape(subline)}</p>', unsafe_allow_html=True)
-    with refresh_col:
-        if st.button('Refresh data', key='home_refresh'):
-            fetch_log.clear()
-            st.rerun()
-        st.caption(f'Pulled {fetched_at} IST')
+        # st.markdown(f'<p class="hm-subline">{html.escape(subline)}</p>', unsafe_allow_html=True)
+    # with refresh_col:
+    #     if st.button('Refresh data', key='home_refresh'):
+    #         fetch_log.clear()
+    #         st.rerun()
+    #     st.caption(f'Pulled {fetched_at} IST')
 
     # ── status tiles (all time) ──
     kpi_band([
@@ -493,7 +454,7 @@ def page_home():
         ('Projects in progress', len(in_progress),
          f'open, not blocked. {plural(stale_open, "older project")} untouched {OPEN_WINDOW_DAYS}+ days not counted'
          if stale_open else 'open, not blocked', ''),
-        ('Blocked / awaiting GC response', len(blocked), f'of {len(inflight)} open projects', 'bad' if len(blocked) else ''),
+        ('Awaiting GC response', len(blocked), f'of {len(inflight)} open projects', 'bad' if len(blocked) else ''),
         ('Times sent back for rework', rework_times, f'across {plural(rework_projects, "project")}',
          'bad' if rework_times else ''),
     ])
@@ -509,49 +470,38 @@ def page_home():
         else:
             msg = (f'Logged today: <b>{html.escape(", ".join(logged))}</b>. '
                    f'Still to log: {html.escape(", ".join(pending))}.')
-        st.markdown(f'<div class="hm-today">{msg}</div>', unsafe_allow_html=True)
+        # st.markdown(f'<div class="hm-today">{msg}</div>', unsafe_allow_html=True)
 
     # ── hours ──
     section('Hours per week',
         f'Last {TREND_WEEKS} weeks, split by kind of work. The dotted line is {ALLOTTED_HOURS_PER_WEEK} h for everyone who logged that week.')
     show_fig(fig_weekly_trend(d, cur_ws), 'home_trend')
     
-    col_trend1, col_trend2 = st.columns(2)
-
-
-    with col_trend1:
-        section('Where the hours went this week')
-        if this_week['time_spent'].sum() > 0:
-            show_fig(fig_workstream_hours(this_week), 'home_ws_hours')
-        else:
-            st.caption('No hours logged this week yet.')
-    
-    with col_trend2:
-
-        section('What open projects are waiting on',
-                f'Latest "next step" on each open project kicked-off in the last {OPEN_WINDOW_DAYS} days.')
-        if inflight.empty:
-            st.caption('No open projects in flight.')
-        else:
-            show_fig(fig_waiting_on(inflight), 'home_waiting')
+    section('What open projects are waiting on',
+            f'Latest "next step" on each open project kicked-off in the last {OPEN_WINDOW_DAYS} days. '
+            f'For hours per workstream this week, see Weekly Snapshot.')
+    if inflight.empty:
+        st.caption('No open projects in flight.')
+    else:
+        show_fig(fig_waiting_on(inflight), 'home_waiting')
 
     # ── needs attention ──
-    quiet = inflight[(inflight['latest_status'] != 'blocked') & (inflight['days_since'] > QUIET_DAYS)]
+    quiet = inflight[(~is_blocked) & (inflight['days_since'] > QUIET_DAYS)]
     recent_rework = d[(d['is_rework'] != '') & (d['date'] >= today - pd.Timedelta(days=REWORK_LOOKBACK_DAYS))]
 
     section('Needs attention')
-    tab_blocked, tab_quiet, tab_rework = st.tabs([
+    tab_blocked, tab_rework = st.tabs([
         f'Blocked ({len(blocked)})',
-        f'Gone quiet ({len(quiet)})',
-        f'Rework, last {REWORK_LOOKBACK_DAYS} days ({len(recent_rework)})',
+        # f'Gone quiet ({len(quiet)})',
+        f'Rework - last {REWORK_LOOKBACK_DAYS} days ({len(recent_rework)})',
     ])
     with tab_blocked:
         show_table(project_attention_table(blocked.sort_values('days_since', ascending=False)),
                    'Nothing is blocked. 🎉')
-    with tab_quiet:
-        st.caption(f'Open, not blocked, and no entry for more than {QUIET_DAYS} days.')
-        show_table(project_attention_table(quiet.sort_values('days_since', ascending=False)),
-                   'Every open project has been touched recently.')
+    # with tab_quiet:
+    #     st.caption(f'Open, not blocked, and no entry for more than {QUIET_DAYS} days.')
+    #     show_table(project_attention_table(quiet.sort_values('days_since', ascending=False)),
+    #                'Every open project has been touched recently.')
     with tab_rework:
         rw = recent_rework.sort_values('date', ascending=False)[
             ['date', 'user_name', 'workstream_name', 'project_name', 'stage', 'is_rework']
@@ -591,37 +541,33 @@ def page_home():
         done_month = t[t['completed_date'] >= month_start]
         top = done_month['completed_by'].value_counts()
 
-        section('Completions by month',
-                f'Projects completed in each of the last {COMPLETION_MONTHS} months, by the date of their final completed entry.')
-        show_fig(fig_monthly_completions(t, today), 'home_completions')
-
         line = (f'{today.strftime("%B")}: {len(done_month)} completed, '
                 f'{count_projects(month_rows)} projects touched, '
                 f'{month_rows["time_spent"].sum():,.1f} delivery hours.')
         if len(top):
             line += f' Most completions: {top.index[0]} ({top.iloc[0]}).'
-        st.caption(line)
+        # st.caption(line)
  
 
-    # ── links ──
-    section('Go to')
-    links = [
-        ('daily_entry.py', 'Daily Log Entry', '📝', 'Log today’s work', False),
-        ('weekly_view.py', 'Weekly Snapshot', '📅', f'{hours_now:,.0f} h logged this week', False),
-        ('weekly_planning.py', 'Weekly Planning Entry', '🗓️', 'Mark projects visible or received', True),
-        ('monthly_view.py', 'Monthly Recap', '📊', f'{len(t[t["completed_date"] >= today.replace(day=1)])} completed in {today.strftime("%B")}', True),
-        ('delivered_view.py', 'Delivered - Since Inception', '✅', f'{int(t["is_complete"].sum())} projects delivered', True),
-        ('efficiency_view.py', 'Lean Improvements', '⚡', 'Tools, automation and process fixes', True),
-        ('project_journey_view.py', 'Project Journey', '🧭', f'{len(blocked)} blocked, {len(quiet)} gone quiet', True),
-        ('rasci_view.py', 'RASCI Matrix', '🧩', 'Who owns each workstream', True),
-    ]
-    visible = [l for l in links if not l[4] or is_admin]
-    for start in range(0, len(visible), 4):
-        cols = st.columns(4)
-        for col, (path, label, icon, blurb, _) in zip(cols, visible[start:start + 4]):
-            with col:
-                st.page_link(path, label=label, icon=icon)
-                st.caption(blurb)
+    # # ── links ──
+    # section('Go to')
+    # links = [
+    #     ('daily_entry.py', 'Daily Log Entry', '📝', 'Log today’s work', False),
+    #     ('weekly_view.py', 'Weekly Snapshot', '📅', f'{hours_now:,.0f} h logged this week', False),
+    #     ('weekly_planning.py', 'Weekly Planning Entry', '🗓️', 'Mark projects visible or received', True),
+    #     ('monthly_view.py', 'Monthly Recap', '📊', f'{len(t[t["completed_date"] >= today.replace(day=1)])} completed in {today.strftime("%B")}', True),
+    #     ('delivered_view.py', 'Delivered - Since Inception', '✅', f'{int(t["is_complete"].sum())} projects delivered', True),
+    #     ('efficiency_view.py', 'Lean Improvements', '⚡', 'Tools, automation and process fixes', True),
+    #     ('project_journey_view.py', 'Project Journey', '🧭', f'{len(blocked)} blocked, {len(quiet)} gone quiet', True),
+    #     ('rasci_view.py', 'RASCI Matrix', '🧩', 'Who owns each workstream', True),
+    # ]
+    # visible = [l for l in links if not l[4] or is_admin]
+    # for start in range(0, len(visible), 4):
+    #     cols = st.columns(4)
+    #     for col, (path, label, icon, blurb, _) in zip(cols, visible[start:start + 4]):
+    #         with col:
+    #             st.page_link(path, label=label, icon=icon)
+    #             st.caption(blurb)
 
 
 page_home()

@@ -3,6 +3,8 @@ import streamlit as st
 
 from pathlib import Path
 
+import plotly.graph_objects as go
+
 from db import load_data, get_rework_summary
 
 # --------------------------------------------------
@@ -109,6 +111,99 @@ def load_workstream_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
 
 
 # --------------------------------------------------
+#     COMPLETIONS-BY-MONTH TREND (stacked by workstream)
+# --------------------------------------------------
+
+# Distinct colors, one per workstream, reused every time the chart redraws
+# so a given workstream is always the same color.
+_COMPLETIONS_PALETTE = [
+    '#E63946',  # Red
+    '#F77F00',  # Orange
+    '#F2C94C',  # Yellow
+    '#2E7D32',  # Green
+    '#00A896',  # Teal
+    '#00B4D8',  # Cyan
+    '#277DA1',  # Blue
+    '#4361EE',  # Indigo
+    '#7209B7',  # Purple
+    '#C2185B',  # Magenta
+    '#8D5524',  # Brown
+    '#6C757D',  # Slate Gray
+    '#FF6F61',  # Coral
+]
+
+def fig_completions_by_month_stacked(monthly_completions_df: pd.DataFrame, today: pd.Timestamp,
+                                      months: int, workstreams_order: list) -> go.Figure:
+    """
+    Stacked bar: projects completed per month (last `months` months), each
+    bar split into one segment per workstream, with the month's total
+    labeled above the bar.
+    """
+    month_range = pd.period_range(end=today.to_period('M'), periods=months, freq='M')
+    labels = [m.strftime('%b %Y') for m in month_range]
+
+    d = monthly_completions_df.copy()
+    d['month_period'] = pd.to_datetime(d['month']).dt.to_period('M')
+    d = d[d['month_period'].isin(month_range)]
+
+    counts = (
+        d.groupby(['month_period', 'workstream_name'])
+         .size()
+         .unstack(fill_value=0)
+         .reindex(index=month_range, fill_value=0)
+    )
+
+    # keep a stable, canonical workstream order; drop any with zero
+    # completions across the whole window so the legend stays clean
+    ordered_cols = [ws for ws in workstreams_order if ws in counts.columns]
+    ordered_cols += [ws for ws in counts.columns if ws not in ordered_cols]
+    counts = counts[ordered_cols]
+    counts = counts.loc[:, counts.sum(axis=0) > 0]
+
+    totals = counts.sum(axis=1)
+    ws_colors = {ws: _COMPLETIONS_PALETTE[i % len(_COMPLETIONS_PALETTE)]
+                 for i, ws in enumerate(counts.columns)}
+
+    fig = go.Figure()
+    for ws in counts.columns:
+        vals = counts[ws]
+        fig.add_trace(go.Bar(
+            x=labels, y=vals, name=ws,
+            marker_color=ws_colors[ws],
+            text=[str(v) if v > 0 else '' for v in vals],
+            textposition='inside', insidetextanchor='middle',
+            textfont=dict(size=10, color='#0d1b0d'),
+            hovertemplate=f'<b>{ws}</b><br>%{{x}}: %{{y}} completed<extra></extra>',
+        ))
+
+    # total label above each stacked bar
+    fig.add_trace(go.Scatter(
+        x=labels, y=totals, mode='text',
+        text=[str(t) if t else '' for t in totals],
+        textposition='top center',
+        textfont=dict(color='#e8eef4', size=13, family='DejaVu Sans'),
+        showlegend=False, hoverinfo='skip',
+    ))
+
+    fig.update_layout(
+        barmode='stack',
+        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='#e8eef4'),
+        height=440,
+        margin=dict(l=8, r=8, t=40, b=8),
+        bargap=0.35,
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, x=0,
+                    font=dict(color='#e8eef4', size=9)),
+    )
+    fig.update_xaxes(type='category', gridcolor='#1a2a3a', color='#e8eef4')
+    fig.update_yaxes(
+        title='Projects completed', gridcolor='#1a2a3a', color='#e8eef4',
+        range=[0, max(totals.max(), 1) * 1.3],
+    )
+    return fig
+
+
+# --------------------------------------------------
 #                   STYLING HELPER
 # --------------------------------------------------
 
@@ -160,10 +255,33 @@ def page4():
     with st.container(border=True):
         st.markdown('#### Delivered - Since Inception')
 
+    summary_df, project_status_df, monthly_completions_df = load_workstream_data()
+
+    st.markdown("#### Completions by month")
+
+    months_selected = st.slider(
+        "Months to show", min_value=3, max_value=24, value=6, step=1,
+        key='delivered_completion_months',
+    )
+    st.markdown(
+        f"Projects completed in each of the last {months_selected} months, split by workstream. "
+        f"The number above each bar is that month's total."
+    )
+
+    if monthly_completions_df.empty:
+        st.markdown('_No completed projects yet._')
+    else:
+        today = pd.Timestamp.now(tz='Asia/Kolkata').tz_localize(None).normalize()
+        st.plotly_chart(
+            fig_completions_by_month_stacked(
+                monthly_completions_df, today, months_selected, workstreams_list_delivery
+            ),
+            use_container_width=True,
+            key=f"delivered_completions_trend_{months_selected}",
+        )
+
     with st.expander(label = 'View Total Number of Projects Delivered'):
         st.markdown('Number of **Projects Completed (Lifetime)** in Each of the Workstreams')
-
-        summary_df, project_status_df, monthly_completions_df = load_workstream_data()
 
         st.dataframe(summary_df, use_container_width=True,
                      height=min(900, 60 + 35 * len(summary_df)))
