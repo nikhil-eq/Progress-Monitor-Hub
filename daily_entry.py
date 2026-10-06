@@ -189,7 +189,7 @@ def submit_entry():
 def team_info():
     st.selectbox(
         'Name',
-        options=['Nikhil', 'Radha', 'Yogi', 'Rupaz'],
+        options=['Nikhil', 'Radha', 'Yogi', 'Rupaz', 'Sumedha'],
         index=None,
         placeholder='Select your name',
         key='user_name',
@@ -368,6 +368,11 @@ def page1():
                             st.markdown(
                                 f"Vanakkam, Tracker Barro {st.session_state.user_name} Bhaiyyaih"
                                 )
+            elif st.session_state.user_name in ['Sumedha']:
+                
+                st.markdown(
+                    f"Show us your voice, {st.session_state.user_name}"
+                )
             
             else:
                 
