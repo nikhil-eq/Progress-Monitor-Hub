@@ -371,7 +371,7 @@ def page1():
             elif st.session_state.user_name in ['Sumedha']:
                 
                 st.markdown(
-                    f"Show us your voice, {st.session_state.user_name}"
+                    f"Be louder, {st.session_state.user_name}"
                 )
             
             else:
