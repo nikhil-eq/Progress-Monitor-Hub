@@ -458,14 +458,14 @@ def page3():
         'workstream_name': 'Workstream',
         'project_names': 'Project Name',
         'completed_count': 'Completed Projects Count',
-        'total_projects': 'Total Projects Touched',
+        'total_projects': 'Total Projects Kicked-off',
         'completed_by_list': 'Completed By',
         'total_time': 'Time Spent (hrs)',
     })
 
     with st.container(border=True, key = 'monthly_view_card2'):
         completed_sum = result['Completed Projects Count'].sum() if not result.empty else 0
-        touched_sum = result['Total Projects Touched'].sum() if not result.empty else 0
+        touched_sum = result['Total Projects Kicked-off'].sum() if not result.empty else 0
         time_sum = result['Time Spent (hrs)'].sum() if not result.empty else 0
 
         col1, col2, col3 = st.columns(3)
@@ -497,7 +497,7 @@ def page3():
     with st.expander("View Detailed Table"):
         st.dataframe(
             result[['Workstream', 'Project Name', 'Completed By', 'Completed Projects Count',
-                    'Total Projects Touched', 'Time Spent (hrs)']],
+                    'Total Projects Kicked-off', 'Time Spent (hrs)']],
             use_container_width=True,
             height=min(900, 60 + 35 * len(result)),
         )

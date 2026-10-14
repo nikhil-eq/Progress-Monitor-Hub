@@ -323,11 +323,24 @@ def fig_weekly_trend(d: pd.DataFrame, cur_ws: pd.Timestamp) -> go.Figure:
 def fig_waiting_on(inflight: pd.DataFrame) -> go.Figure:
     steps = inflight['next_steps'].where(~inflight['next_steps'].str.lower().isin(INVALID_NAMES), 'Not stated')
     counts = steps.value_counts()
+
+    # Hover lists the projects behind each bar (capped so the tooltip stays readable).
+    max_listed = 15
+    labels = (inflight['project_name'].astype(str) + ' (' + inflight['workstream_name'].astype(str) + ')')
+    project_lists = []
+    for step in counts.index:
+        names = sorted(labels[steps == step])
+        shown = [html.escape(n) for n in names[:max_listed]]
+        if len(names) > max_listed:
+            shown.append(f'+{len(names) - max_listed} more')
+        project_lists.append('<br>'.join(f'• {n}' for n in shown))
+
     fig = go.Figure(go.Bar(
         x=counts.values, y=list(counts.index), orientation='h',
         marker_color=[WAITING_COLORS.get(k, SLATE) for k in counts.index],
         text=list(counts.values), textposition='outside', cliponaxis=False,
-        hovertemplate='<b>%{y}</b><br>%{x} projects<extra></extra>',
+        customdata=project_lists,
+        hovertemplate='<b>%{y}</b><br>%{x} projects<br><br>%{customdata}<extra></extra>',
     ))
     style_fig(fig, max(220, 52 * len(counts) + 60), bargap=0.35)
     fig.update_yaxes(autorange='reversed', automargin=True)
@@ -413,7 +426,6 @@ def page_home():
     stale_open = len(open_projects) - len(inflight)
 
     rework_rows = d[(d['is_rework'] != '') & d['workstream_name'].isin(DELIVERY)]
-    rework_times = len(rework_rows)
     rework_projects = count_projects(rework_rows)
 
     # ── header ──
@@ -455,8 +467,9 @@ def page_home():
          f'open, not blocked. {plural(stale_open, "older project")} untouched {OPEN_WINDOW_DAYS}+ days not counted'
          if stale_open else 'open, not blocked', ''),
         ('Awaiting GC response', len(blocked), f'of {len(inflight)} open projects', 'bad' if len(blocked) else ''),
-        ('Times sent back for rework', rework_times, f'across {plural(rework_projects, "project")}',
-         'bad' if rework_times else ''),
+        ('Projects reworked', rework_projects,
+         f'across {plural(rework_rows["workstream_name"].nunique(), "workstream")}',
+         'bad' if rework_projects else ''),
     ])
 
     # ── who has logged today (weekdays only) ──

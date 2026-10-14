@@ -52,7 +52,18 @@ def load_workstream_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     df['date'] = pd.to_datetime(df['date'], errors='coerce')
     df['current_status'] = df['current_status'].astype(str).str.strip().str.lower()
     df['stage'] = df['stage'].astype(str).str.strip()
-    df['workstream_name'] = df['workstream_name'].astype(str).str.strip()
+    # Some rows are stored as "WS1:Paddock" and others as "WS1: Paddock" —
+    # normalise to the "WS1: Paddock" spelling used in workstreams_list_delivery.
+    df['workstream_name'] = (df['workstream_name'].astype(str).str.strip()
+                               .str.replace(r':\s*', ': ', regex=True))
+
+    # R&D entries (logged with an R&D explanation and no project) aren't
+    # deliveries — only Project Services work counts here.
+    rnd_explanation = df['rnd_explaination'].fillna('').astype(str).str.strip() \
+        if 'rnd_explaination' in df.columns else pd.Series('', index=df.index)
+    df['project_name'] = df['project_name'].astype(str).str.strip()
+    df = df[rnd_explanation.str.lower().isin(['', 'nan', 'none'])
+            & ~df['project_name'].str.lower().isin(['', 'nan', 'none'])]
 
     # 1. restrict to only the workstreams we care about
     df = df[df['workstream_name'].isin(workstreams_list_delivery)]

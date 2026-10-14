@@ -684,22 +684,17 @@ def categorize_hours(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def fig_workstream_hours(week_df: pd.DataFrame) -> go.Figure:
-    """Horizontal bar of hours logged this week per workstream (top 8,
-    everything else rolled up), colored by category."""
+    """Horizontal bar of hours logged this week per workstream (every
+    workstream shown), colored by category."""
     d = categorize_hours(week_df)
 
     g = (d.groupby('workstream_name')
            .agg(hours=('time_spent', 'sum'), cat=('category', 'first'))
            .query('hours > 0').sort_values('hours', ascending=False))
 
-    names = list(g.index[:8])
-    values = list(g['hours'][:8])
-    colors = [CATEGORY_COLORS[c] for c in g['cat'][:8]]
-    rest = g['hours'][8:].sum()
-    if rest > 0:
-        names.append('Everything else')
-        values.append(rest)
-        colors.append(CAT_SLATE)
+    names = list(g.index)
+    values = list(g['hours'])
+    colors = [CATEGORY_COLORS[c] for c in g['cat']]
 
     fig = go.Figure(go.Bar(
         x=values, y=names, orientation='h', marker_color=colors,
@@ -793,14 +788,30 @@ def get_latest_status_map(df: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def is_rnd_entry(df: pd.DataFrame) -> pd.Series:
+    """
+    True for rows logged as R&D work. The Daily Log's R&D branch only asks for
+    an explanation (no project / stage), so a filled 'rnd_explaination' marks
+    an R&D entry. 'work_type' is also honoured if the sheet ever stores it.
+    """
+    explanation = df['rnd_explaination'] if 'rnd_explaination' in df.columns else pd.Series('', index=df.index)
+    explanation = explanation.fillna('').astype(str).str.strip()
+    mask = ~explanation.str.lower().isin(['', 'nan', 'none'])
+    if 'work_type' in df.columns:
+        mask |= df['work_type'].fillna('').astype(str).str.strip().str.lower() == 'r&d'
+    mask |= df['workstream_name'].astype(str).str.strip().str.lower() == 'research and development'
+    return mask
+
+
 def get_workstream_ops_summary(df: pd.DataFrame) -> pd.DataFrame:
     """
     One row per workstream (or, for Adhoc Analysis specifically, one row per
     stage under it — labeled 'Adhoc Analysis - <stage>'): how many distinct
     projects have been touched, how many are completed, and a bullet-point
-    breakdown of project names.
+    breakdown of project names. Project Services entries only — R&D entries
+    go to the R&D summary instead.
     """
-    scoped = df[df['workstream_name'].isin(workstreams_list_delivery)].copy()
+    scoped = df[df['workstream_name'].isin(workstreams_list_delivery) & ~is_rnd_entry(df)].copy()
     scoped['current_status'] = scoped['current_status'].str.strip().str.lower()
     scoped['stage'] = scoped['stage'].str.strip()
 
@@ -908,46 +919,71 @@ def get_paddock_als_cpc_summary(df: pd.DataFrame) -> pd.DataFrame:
     return summary
 
 
+def _rnd_entries(df: pd.DataFrame) -> pd.DataFrame:
+    """R&D entries only (Project Services work goes to the Project Services
+    summary instead), with the columns the R&D tables need cleaned up."""
+    scoped = df[is_rnd_entry(df)].copy()
+    scoped['workstream_name'] = scoped['workstream_name'].astype(str).str.strip().map(_norm_ws)
+    scoped['rnd_explaination'] = scoped['rnd_explaination'].fillna('').astype(str).str.strip()
+    scoped['current_status'] = scoped['current_status'].fillna('').astype(str).str.strip()
+    scoped['time_spent'] = pd.to_numeric(scoped['time_spent'], errors='coerce').fillna(0.0)
+    return scoped
+
+
+RND_QUANT_WORKSTREAMS = ['WS1: Paddock Mapping and Digitization', 'WS3: ALS-to-CPC']
+
+
+def get_rnd_quantitative_summary(df: pd.DataFrame) -> pd.DataFrame:
+    """Projects delivered (latest status 'Completed') under WS1 Paddock
+    Mapping and WS3 ALS-to-CPC — one row per workstream, zero rows kept."""
+    scoped = df[~is_rnd_entry(df)].copy()
+    scoped['workstream_name'] = scoped['workstream_name'].astype(str).str.strip().map(_norm_ws)
+    scoped = scoped[scoped['workstream_name'].isin(RND_QUANT_WORKSTREAMS)]
+    scoped['project_name'] = scoped['project_name'].fillna('').astype(str).str.strip()
+    scoped = scoped[~scoped['project_name'].str.lower().isin(['', 'nan', 'none'])]
+    scoped['current_status'] = scoped['current_status'].fillna('').astype(str).str.strip().str.lower()
+
+    project_status = (
+        scoped.sort_values('date', kind='stable')
+              .groupby(['workstream_name', 'project_name'], as_index=False)
+              .last()[['workstream_name', 'project_name', 'current_status']]
+    )
+    delivered = project_status[project_status['current_status'] == 'completed']
+
+    rows = []
+    for ws in RND_QUANT_WORKSTREAMS:
+        names = sorted(delivered.loc[delivered['workstream_name'] == ws, 'project_name'])
+        rows.append({
+            'Workstream': ws,
+            'Projects Delivered': len(names),
+            'Delivered Projects': "\n".join(f"• {n}" for n in names) if names else "—",
+        })
+    return pd.DataFrame(rows)
+
+
 def get_workstream_rnd_summary(df: pd.DataFrame) -> pd.DataFrame:
-    scoped = df[df['workstream_name'].isin(rnd_list)].copy()
-    scoped = scoped[~scoped['stage'].isin(['Meetings', 'Debugging', 'House Help', 'Training / KT Given', 'Training / KT Received'])]
-
-    scoped['stage'] = scoped['stage'].str.strip()
-    scoped['rnd_explaination'] = scoped['rnd_explaination'].astype(str).str.strip()
-
-    paddock_stage_names = {'Processing', 'Completed'}
-    scoped = scoped[~scoped['stage'].isin(paddock_stage_names)]
-
-    stage_display_names = {
-        'iMAD': 'iMAD: Change Detection',
-        'WS3:ALS-to-CPC': 'WS3: ALS-to-CPC',
-        'Fire Impact Assessment': 'Fire Impact Assessment',
-        'WS2:AD Enhancements & driver of changes': 'WS2:AD Enhancements & driver of changes',
-    }
-    scoped['stage'] = scoped['stage'].replace(stage_display_names)
-
+    """One row per workstream with R&D work logged, each entry's explanation
+    as a bullet (date · who: explanation (status))."""
+    scoped = _rnd_entries(df)
     if scoped.empty:
         return pd.DataFrame(columns=['Workstream', 'Progress'])
 
     def build_row(group: pd.DataFrame) -> pd.Series:
-        explanations = group['rnd_explaination'].dropna()
-        explanations = explanations[explanations != '']
-        detail = "\n".join(f"• {e}" for e in explanations) if not explanations.empty else "—"
-        return pd.Series({
-            'planned': group['project_name'].nunique(),
-            'detail': detail,
-        })
+        bullets = []
+        for _, r in group.sort_values('date').iterrows():
+            text = r['rnd_explaination'] if r['rnd_explaination'].lower() not in ('', 'nan', 'none') else '—'
+            status = f" ({r['current_status']})" if r['current_status'] else ''
+            bullets.append(f"• {r['date']:%d %b} · {r['user_name']}: {text}{status}")
+        return pd.Series({'detail': "\n".join(bullets)})
 
     summary = (
-        scoped.groupby('stage', group_keys=True)
+        scoped.groupby('workstream_name')
               .apply(build_row, include_groups=False)
               .reset_index()
+              .sort_values('workstream_name')
+              .reset_index(drop=True)
     )
-
-    summary = summary.sort_values('stage').reset_index(drop=True)
-    summary = summary.drop(columns=['planned'])
-    summary = summary.rename(columns={'stage': 'Workstream', 'detail': 'Progress'})
-    return summary
+    return summary.rename(columns={'workstream_name': 'Workstream', 'detail': 'Progress'})
 
 
 def get_user_workstream_hours(week_df: pd.DataFrame) -> pd.DataFrame:
@@ -1246,7 +1282,7 @@ def page2():
 
     with st.container(border=True, key="weekly_view_card_ws_hours"):
         st.markdown("#### Where the hours went this week")
-        st.markdown("Hours logged this week, by workstream (top 8; everything else rolled up).")
+        st.markdown("Hours logged this week, by workstream.")
         if week_df.empty or pd.to_numeric(week_df['time_spent'], errors='coerce').fillna(0).sum() == 0:
             st.markdown('_No hours logged this week yet._')
         else:
@@ -1374,20 +1410,20 @@ def page2():
                 st.dataframe(ops_summary)
                 
             st.markdown("**R&D Summary**")
-            
+
             st.markdown('Quantitative')
-            
-            paddock_summary = get_paddock_als_cpc_summary(week_df)
-            if paddock_summary.empty:
-                    st.markdown('_No hours logged this week._')
+
+            rnd_quant = get_rnd_quantitative_summary(week_df)
+            if rnd_quant.empty:
+                st.markdown('_No R&D work logged this week._')
             else:
-                st.dataframe(paddock_summary)
-            
+                st.dataframe(rnd_quant)
+
             st.markdown('Qualitative')
 
             rnd_summary = get_workstream_rnd_summary(week_df)
             if rnd_summary.empty:
-                st.markdown('_No hours logged this week._')
+                st.markdown('_No R&D work logged this week._')
             else:
                 st.dataframe(rnd_summary)
 page2()
