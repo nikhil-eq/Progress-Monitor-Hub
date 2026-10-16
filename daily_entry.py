@@ -277,7 +277,8 @@ def daily_entry_form():
                                             'MGA Zones', 
                                             'AD Biomass Maps', 
                                             'Stratification File Review', 
-                                            '10m Value Analysis - .plo vs .pld files'], 
+                                            '10m Value Analysis - .plo vs .pld files', 
+                                            'Paddock, Water Points and Tracks Updates'], 
                         index = None, key = 'stage')
             
 
