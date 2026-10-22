@@ -122,6 +122,9 @@ def get_workstream_ops_summary(df: pd.DataFrame) -> pd.DataFrame:
     scoped = df[df['workstream_name'].isin(workstreams_list_delivery)].copy()
     scoped['current_status'] = scoped['current_status'].str.strip().str.lower()
     scoped['stage'] = scoped['stage'].str.strip()
+    if 'next_steps' not in scoped.columns:
+        scoped['next_steps'] = ''
+    scoped['next_steps'] = scoped['next_steps'].fillna('').astype(str).str.strip()
 
     # display-only grouping key: split Adhoc Analysis out by stage,
     # leave every other workstream as-is
@@ -131,29 +134,42 @@ def get_workstream_ops_summary(df: pd.DataFrame) -> pd.DataFrame:
         axis=1,
     )
 
-    # latest known status per (display_workstream, project) — not per user,
-    # since this view is about project completion, not who logged it
+    # latest known status, stage and next step per (display_workstream, project) —
+    # not per user, since this view is about project completion, not who logged it
     project_status = (
         scoped.sort_values('date')
               .groupby(['display_workstream', 'project_name'], as_index=False)
-              .last()[['display_workstream', 'project_name', 'current_status']]
+              .last()[['display_workstream', 'project_name', 'current_status', 'stage', 'next_steps']]
     )
+
+    # a project only counts as kicked-off once work beyond SOP Familiarisation is logged
+    kicked_off_keys = set(
+        scoped.loc[scoped['stage'].str.lower() != 'sop familiarisation',
+                   ['display_workstream', 'project_name']]
+              .itertuples(index=False, name=None)
+    )
+    project_status['kicked_off'] = [
+        key in kicked_off_keys
+        for key in zip(project_status['display_workstream'], project_status['project_name'])
+    ]
 
     def build_row(group: pd.DataFrame) -> pd.Series:
         completed = group[group['current_status'] == 'completed']
-        in_progress = group[group['current_status'] != 'completed']
+        in_progress = group[group['current_status'] != 'completed'].sort_values('project_name')
 
         all_names = "\n".join(f"• {n}" for n in sorted(group['project_name']))
-        in_progress_names = (
-            "\n".join(f"• {n}" for n in sorted(in_progress['project_name']))
-            if not in_progress.empty else "—"
-        )
+
+        # one bullet per pending project, in the same order as in_progress_projects
+        def bullets(values):
+            return "\n".join(f"• {v or 'Not stated'}" for v in values) if not in_progress.empty else "—"
 
         return pd.Series({
-            'total_touched': group['project_name'].nunique(),
+            'total_touched': group.loc[group['kicked_off'], 'project_name'].nunique(),
             'completed_count': len(completed),
             'all_projects': all_names,
-            'in_progress_projects': in_progress_names,
+            'in_progress_projects': bullets(in_progress['project_name']),
+            'last_stage': bullets(in_progress['stage']),
+            'next_steps': bullets(in_progress['next_steps']),
         })
 
     summary = (
@@ -190,19 +206,21 @@ def get_paddock_als_cpc_summary(df: pd.DataFrame) -> pd.DataFrame:
 
     def build_row(group: pd.DataFrame) -> pd.Series:
         completed = group[group['current_status'] == 'completed']
-        in_progress = group[group['current_status'] != 'completed']
+        in_progress = group[group['current_status'] != 'completed'].sort_values('project_name')
 
         all_names = "\n".join(f"• {n}" for n in sorted(group['project_name']))
-        in_progress_names = (
-            "\n".join(f"• {n}" for n in sorted(in_progress['project_name']))
-            if not in_progress.empty else "—"
-        )
+
+        # one bullet per pending project, in the same order as in_progress_projects
+        def bullets(values):
+            return "\n".join(f"• {v or 'Not stated'}" for v in values) if not in_progress.empty else "—"
 
         return pd.Series({
-            'total_touched': group['project_name'].nunique(),
+            'total_touched': group.loc[group['kicked_off'], 'project_name'].nunique(),
             'completed_count': len(completed),
             'all_projects': all_names,
-            'in_progress_projects': in_progress_names,
+            'in_progress_projects': bullets(in_progress['project_name']),
+            'last_stage': bullets(in_progress['stage']),
+            'next_steps': bullets(in_progress['next_steps']),
         })
 
     summary = (
@@ -812,8 +830,13 @@ def get_workstream_ops_summary(df: pd.DataFrame) -> pd.DataFrame:
     go to the R&D summary instead.
     """
     scoped = df[df['workstream_name'].isin(workstreams_list_delivery) & ~is_rnd_entry(df)].copy()
+    # entries without a project (e.g. general SOP Familiarisation) aren't projects
+    scoped = scoped[scoped['project_name'].fillna('').astype(str).str.strip() != '']
     scoped['current_status'] = scoped['current_status'].str.strip().str.lower()
     scoped['stage'] = scoped['stage'].str.strip()
+    if 'next_steps' not in scoped.columns:
+        scoped['next_steps'] = ''
+    scoped['next_steps'] = scoped['next_steps'].fillna('').astype(str).str.strip()
 
     # display-only grouping key: split Adhoc Analysis out by stage,
     # leave every other workstream as-is
@@ -823,29 +846,42 @@ def get_workstream_ops_summary(df: pd.DataFrame) -> pd.DataFrame:
         axis=1,
     )
 
-    # latest known status per (display_workstream, project) — not per user,
-    # since this view is about project completion, not who logged it
+    # latest known status, stage and next step per (display_workstream, project) —
+    # not per user, since this view is about project completion, not who logged it
     project_status = (
         scoped.sort_values('date')
               .groupby(['display_workstream', 'project_name'], as_index=False)
-              .last()[['display_workstream', 'project_name', 'current_status']]
+              .last()[['display_workstream', 'project_name', 'current_status', 'stage', 'next_steps']]
     )
+
+    # a project only counts as kicked-off once work beyond SOP Familiarisation is logged
+    kicked_off_keys = set(
+        scoped.loc[scoped['stage'].str.lower() != 'sop familiarisation',
+                   ['display_workstream', 'project_name']]
+              .itertuples(index=False, name=None)
+    )
+    project_status['kicked_off'] = [
+        key in kicked_off_keys
+        for key in zip(project_status['display_workstream'], project_status['project_name'])
+    ]
 
     def build_row(group: pd.DataFrame) -> pd.Series:
         completed = group[group['current_status'] == 'completed']
-        in_progress = group[group['current_status'] != 'completed']
+        in_progress = group[group['current_status'] != 'completed'].sort_values('project_name')
 
         all_names = "\n".join(f"• {n}" for n in sorted(group['project_name']))
-        in_progress_names = (
-            "\n".join(f"• {n}" for n in sorted(in_progress['project_name']))
-            if not in_progress.empty else "—"
-        )
+
+        # one bullet per pending project, in the same order as in_progress_projects
+        def bullets(values):
+            return "\n".join(f"• {v or 'Not stated'}" for v in values) if not in_progress.empty else "—"
 
         return pd.Series({
-            'total_touched': group['project_name'].nunique(),
+            'total_touched': group.loc[group['kicked_off'], 'project_name'].nunique(),
             'completed_count': len(completed),
             'all_projects': all_names,
-            'in_progress_projects': in_progress_names,
+            'in_progress_projects': bullets(in_progress['project_name']),
+            'last_stage': bullets(in_progress['stage']),
+            'next_steps': bullets(in_progress['next_steps']),
         })
 
     summary = (
@@ -882,19 +918,21 @@ def get_paddock_als_cpc_summary(df: pd.DataFrame) -> pd.DataFrame:
 
     def build_row(group: pd.DataFrame) -> pd.Series:
         completed = group[group['current_status'] == 'completed']
-        in_progress = group[group['current_status'] != 'completed']
+        in_progress = group[group['current_status'] != 'completed'].sort_values('project_name')
 
         all_names = "\n".join(f"• {n}" for n in sorted(group['project_name']))
-        in_progress_names = (
-            "\n".join(f"• {n}" for n in sorted(in_progress['project_name']))
-            if not in_progress.empty else "—"
-        )
+
+        # one bullet per pending project, in the same order as in_progress_projects
+        def bullets(values):
+            return "\n".join(f"• {v or 'Not stated'}" for v in values) if not in_progress.empty else "—"
 
         return pd.Series({
-            'total_touched': group['project_name'].nunique(),
+            'total_touched': group.loc[group['kicked_off'], 'project_name'].nunique(),
             'completed_count': len(completed),
             'all_projects': all_names,
-            'in_progress_projects': in_progress_names,
+            'in_progress_projects': bullets(in_progress['project_name']),
+            'last_stage': bullets(in_progress['stage']),
+            'next_steps': bullets(in_progress['next_steps']),
         })
 
     summary = (
@@ -1403,6 +1441,8 @@ def page2():
                 'completed_count': 'Projects Completed',
                 'all_projects': 'All Projects',
                 'in_progress_projects': 'In Progress Projects',
+                'last_stage': 'Last Stage',
+                'next_steps': 'Next Steps',
             })
             if ops_summary.empty:
                 st.markdown('_No hours logged this week._')
