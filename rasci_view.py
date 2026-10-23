@@ -5,7 +5,7 @@ import streamlit as st
 from pathlib import Path
 from datetime import datetime
 
-from db import load_data
+from db import load_data, load_rasci, save_rasci, RasciStoreError
 
 # --------------------------------------------------
 #                  CONSTANTS
@@ -111,20 +111,31 @@ def default_matrix() -> dict:
     }
 
 
-def load_matrix() -> dict:
-    """Read the saved matrix, falling back to the seeded default.
-
-    Note: this writes to the local filesystem. On Streamlit Community Cloud
-    that disk is wiped on every redeploy/restart, so treat the JSON download
-    below as the real backup — or point these two functions at the Apps
-    Script sheet the way db.py does.
-    """
+def _read_local() -> dict | None:
     if not MATRIX_PATH.exists():
-        return default_matrix()
+        return None
     try:
-        saved = json.loads(MATRIX_PATH.read_text(encoding='utf-8'))
+        return json.loads(MATRIX_PATH.read_text(encoding='utf-8'))
     except (json.JSONDecodeError, OSError):
-        return default_matrix()
+        return None
+
+
+def load_matrix() -> dict:
+    """Read the saved matrix from the Google Sheet.
+
+    Falls back to the repo's rasci_matrix.json (then the seeded default) when
+    the sheet has nothing yet or can't be reached. The server disk is wiped on
+    every restart, so only the sheet copy is durable. Sets
+    st.session_state['rasci_store_error'] when the sheet couldn't be used.
+    """
+    st.session_state['rasci_store_error'] = None
+    try:
+        saved = load_rasci()
+    except RasciStoreError as exc:
+        st.session_state['rasci_store_error'] = str(exc)
+        saved = None
+    if saved is None:
+        saved = _read_local() or {}
 
     base = default_matrix()
     base.update({k: v for k, v in saved.items() if k in base})
@@ -156,7 +167,7 @@ def save_matrix(matrix: dict, who: str | None = None) -> None:
     matrix = normalise_matrix(matrix)
     matrix['updated_at'] = datetime.now().isoformat(timespec='seconds')
     matrix['updated_by'] = who
-    MATRIX_PATH.write_text(json.dumps(matrix, indent=2), encoding='utf-8')
+    save_rasci(matrix)
 
 
 # --------------------------------------------------
@@ -365,6 +376,12 @@ def page_rasci():
 
     matrix = normalise_matrix(st.session_state['rasci_matrix'])
 
+    if st.session_state.get('rasci_store_error'):
+        st.warning(
+            "Couldn't load the matrix from the Google Sheet, so this is the copy bundled "
+            f"with the app and saving won't work. ({st.session_state['rasci_store_error']})"
+        )
+
     view_tab, edit_tab, setup_tab = st.tabs(['Matrix', 'Edit roles', 'Workstreams & people'])
 
     # ── Read-only view ──
@@ -454,8 +471,8 @@ def page_rasci():
                 st.session_state['rasci_matrix'] = normalise_matrix(updated)
                 st.success('Saved.')
                 st.rerun()
-            except OSError as exc:
-                st.error(f"Couldn't write {MATRIX_PATH}: {exc}")
+            except RasciStoreError as exc:
+                st.error(f"Not saved — {exc}")
 
         if revert_col.button('Discard edits', key='rasci_revert'):
             st.session_state['rasci_matrix'] = load_matrix()
@@ -524,8 +541,8 @@ def page_rasci():
         st.markdown('---')
         st.markdown('**Backup**')
         st.caption(
-            'The matrix lives in a local JSON file, which a redeploy can wipe. '
-            'Download a copy before any big change.'
+            'The matrix is saved to the RASCI tab of the Google Sheet (every save is kept '
+            'as a row there). Download a copy before any big change.'
         )
         b1, b2 = st.columns(2)
         b1.download_button(
@@ -547,6 +564,8 @@ def page_rasci():
                 st.rerun()
             except (json.JSONDecodeError, UnicodeDecodeError, KeyError) as exc:
                 st.error(f"That file isn't a valid matrix export: {exc}")
+            except RasciStoreError as exc:
+                st.error(f"Not restored — {exc}")
 
 
 page_rasci()

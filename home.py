@@ -38,7 +38,6 @@ TREND_WEEKS = 10                 # weeks shown in the hours trend
 TEAM_LOOKBACK_DAYS = 56          # who counts as "on the team"
 OPEN_WINDOW_DAYS = 60            # open project touched within this = in flight
 QUIET_DAYS = 10                  # in flight + no entry for this long = "gone quiet"
-REWORK_LOOKBACK_DAYS = 30
 
 # Lifetime / monthly / lean figures come from admin-only pages. Flip to True
 # if you want everyone to see them on the home page.
@@ -500,28 +499,33 @@ def page_home():
 
     # ── needs attention ──
     quiet = inflight[(~is_blocked) & (inflight['days_since'] > QUIET_DAYS)]
-    recent_rework = d[(d['is_rework'] != '') & (d['date'] >= today - pd.Timedelta(days=REWORK_LOOKBACK_DAYS))]
+    recent_rework = d[d['is_rework'] != '']
 
     section('Needs attention')
     tab_blocked, tab_rework = st.tabs([
-        f'Blocked ({len(blocked)})',
+        f'On-hold ({len(blocked)})',
         # f'Gone quiet ({len(quiet)})',
-        f'Rework - last {REWORK_LOOKBACK_DAYS} days ({len(recent_rework)})',
+        f'Rework ({len(recent_rework[["workstream_name", "project_name"]].drop_duplicates())})',
     ])
     with tab_blocked:
         show_table(project_attention_table(blocked.sort_values('days_since', ascending=False)),
-                   'Nothing is blocked. 🎉')
+                   'Nothing is on hold. 🎉')
     # with tab_quiet:
     #     st.caption(f'Open, not blocked, and no entry for more than {QUIET_DAYS} days.')
     #     show_table(project_attention_table(quiet.sort_values('days_since', ascending=False)),
     #                'Every open project has been touched recently.')
     with tab_rework:
-        rw = recent_rework.sort_values('date', ascending=False)[
-            ['date', 'user_name', 'workstream_name', 'project_name', 'stage', 'is_rework']
-        ].copy()
+        # one row per project: latest date, everyone involved, total rework hours
+        join_unique = lambda s: ', '.join(dict.fromkeys(v for v in s if v))
+        rw = (recent_rework.sort_values('date', ascending=False)
+              .groupby(['workstream_name', 'project_name'], as_index=False, sort=False)
+              .agg(date=('date', 'max'), user_name=('user_name', join_unique),
+                   is_rework=('is_rework', join_unique), time_spent=('time_spent', 'sum'))
+              [['date', 'user_name', 'workstream_name', 'project_name', 'is_rework', 'time_spent']])
         rw['date'] = rw['date'].dt.strftime('%d %b')
-        rw.columns = ['Date', 'Team member', 'Workstream', 'Project', 'Stage', 'Triggered by']
-        show_table(rw, 'No rework flagged recently.')
+        rw['time_spent'] = rw['time_spent'].round(1)
+        rw.columns = ['Date', 'Team member', 'Workstream', 'Project', 'Triggered by', 'Time spent on rework (h)']
+        show_table(rw, 'No rework flagged.')
 
     # ── since inception (admin) ──
     # section('Since inception')

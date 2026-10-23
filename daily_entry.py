@@ -220,6 +220,9 @@ def daily_entry_form():
                             "House Help"]:
             st.selectbox('Project Name', options=project_names, index=None,
                         placeholder='Select project', key='project_name')
+            
+        st.selectbox('Current Status of the Project', options=["In Progress", "Blocked", "Completed"],
+                                index=None, placeholder='Select status', key='current_status')
         
         if workstream in workstreams_list_delivery:
 
@@ -234,7 +237,7 @@ def daily_entry_form():
                 with col1:
                     st.radio(
                         "Rework Triggered due to",
-                        options=["GC - Oversight", "EQ - Oversight"],
+                        options=["Invali Input Files", "Process Iteration", "Tool Issues", "Inconsistent Decisions", "EQ - Oversight"],
                         key="is_rework",
                         horizontal=True,
                     )
@@ -293,10 +296,6 @@ def daily_entry_form():
                                                 'Off-SOP - Unclear Process',
                                                 'Complex - No SOP Available'], key='today_update', 
                         placeholder = 'Select Nature of Task', index = None)
-
-        st.selectbox('Current Status', options=["In Progress", "Blocked", "Completed"],
-                        index=None, placeholder='Select status', key='current_status')
-
 
         if stage_val in ['Process Improvements', 'Automation', 'Tool Building']:
             st.selectbox('Value Added Workstream?', options=workstreams_list_delivery,

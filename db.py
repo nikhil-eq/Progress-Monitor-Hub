@@ -82,6 +82,51 @@ def append_entry_sheet2(row_dict: dict) -> dict:
     return resp.json()
 
 
+# --------------------------------------------------
+#              RASCI MATRIX (Google Sheet)
+# --------------------------------------------------
+# Stored in a 'RASCI' tab of the same sheet via apps_script/rasci.gs — one row
+# per save, latest row wins. The server disk is wiped on every restart, so the
+# sheet is the only place a saved matrix survives.
+
+class RasciStoreError(Exception):
+    """The sheet couldn't be read/written, or Apps Script lacks the RASCI handlers."""
+
+
+def _rasci_supported(payload) -> bool:
+    # An Apps Script deployment without the RASCI handlers ignores ?action=
+    # and returns the whole log as a list.
+    return isinstance(payload, dict) and payload.get('rasci') is True
+
+
+def load_rasci() -> dict | None:
+    """Latest saved matrix from the sheet, or None if nothing saved there yet."""
+    try:
+        resp = requests.get(APPS_SCRIPT_URL, params={'action': 'rasci_get'}, timeout=30)
+        resp.raise_for_status()
+        payload = resp.json()
+    except (requests.RequestException, ValueError) as exc:
+        raise RasciStoreError(f"Couldn't reach the sheet: {exc}") from exc
+    if not _rasci_supported(payload):
+        raise RasciStoreError('Apps Script has not been updated with the RASCI handlers yet.')
+    return payload.get('matrix')
+
+
+def save_rasci(matrix: dict) -> None:
+    """Append the matrix as a new row in the RASCI tab."""
+    # Check first: an old deployment would append this POST to the daily log.
+    load_rasci()
+    try:
+        resp = requests.post(APPS_SCRIPT_URL, json={'action': 'rasci_save', 'matrix': matrix},
+                             timeout=30)
+        resp.raise_for_status()
+        payload = resp.json()
+    except (requests.RequestException, ValueError) as exc:
+        raise RasciStoreError(f"Couldn't save to the sheet: {exc}") from exc
+    if not (_rasci_supported(payload) and payload.get('ok')):
+        raise RasciStoreError(f"Sheet rejected the save: {payload}")
+
+
 def load_project_names() -> list:
     """Local Excel — project names don't need to be in the cloud."""
     if not PROJECT_EXCEL.exists():
