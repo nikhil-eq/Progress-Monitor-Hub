@@ -237,7 +237,7 @@ def daily_entry_form():
                 with col1:
                     st.radio(
                         "Rework Triggered due to",
-                        options=["Invali Input Files", "Process Iteration", "Tool Issues", "Inconsistent Decisions", "EQ - Oversight"],
+                        options=["Invalid Input Files", "Process Iteration", "Tool Issues", "Inconsistent Decisions", "EQ - Oversight"],
                         key="is_rework",
                         horizontal=True,
                     )
