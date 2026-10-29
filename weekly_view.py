@@ -105,7 +105,7 @@ def get_latest_status_map(df: pd.DataFrame) -> pd.DataFrame:
     """Each (user, workstream, project)'s latest known status/stage,
     based on that user's most recent dated entry for that project."""
     return (
-        df.sort_values('date')
+        df.sort_values('date', kind='stable')
           .groupby(['user_name', 'workstream_name', 'project_name'], as_index=False)
           .last()[['user_name', 'workstream_name', 'project_name', 'current_status', 'stage']]
           .rename(columns={'current_status': 'latest_status', 'stage': 'latest_stage'})
@@ -137,7 +137,7 @@ def get_workstream_ops_summary(df: pd.DataFrame) -> pd.DataFrame:
     # latest known status, stage and next step per (display_workstream, project) —
     # not per user, since this view is about project completion, not who logged it
     project_status = (
-        scoped.sort_values('date')
+        scoped.sort_values('date', kind='stable')
               .groupby(['display_workstream', 'project_name'], as_index=False)
               .last()[['display_workstream', 'project_name', 'current_status', 'stage', 'next_steps']]
     )
@@ -199,7 +199,7 @@ def get_paddock_als_cpc_summary(df: pd.DataFrame) -> pd.DataFrame:
     scoped['current_status'] = scoped['current_status'].str.strip().str.lower()
 
     project_status = (
-        scoped.sort_values('date')
+        scoped.sort_values('date', kind='stable')
               .groupby(['workstream_name', 'project_name'], as_index=False)
               .last()[['workstream_name', 'project_name', 'current_status']]
     )
@@ -799,7 +799,7 @@ def get_latest_status_map(df: pd.DataFrame) -> pd.DataFrame:
     """Each (user, workstream, project)'s latest known status/stage,
     based on that user's most recent dated entry for that project."""
     return (
-        df.sort_values('date')
+        df.sort_values('date', kind='stable')
           .groupby(['user_name', 'workstream_name', 'project_name'], as_index=False)
           .last()[['user_name', 'workstream_name', 'project_name', 'current_status', 'stage']]
           .rename(columns={'current_status': 'latest_status', 'stage': 'latest_stage'})
@@ -849,7 +849,7 @@ def get_workstream_ops_summary(df: pd.DataFrame) -> pd.DataFrame:
     # latest known status, stage and next step per (display_workstream, project) —
     # not per user, since this view is about project completion, not who logged it
     project_status = (
-        scoped.sort_values('date')
+        scoped.sort_values('date', kind='stable')
               .groupby(['display_workstream', 'project_name'], as_index=False)
               .last()[['display_workstream', 'project_name', 'current_status', 'stage', 'next_steps']]
     )
@@ -911,7 +911,7 @@ def get_paddock_als_cpc_summary(df: pd.DataFrame) -> pd.DataFrame:
     scoped['current_status'] = scoped['current_status'].str.strip().str.lower()
 
     project_status = (
-        scoped.sort_values('date')
+        scoped.sort_values('date', kind='stable')
               .groupby(['workstream_name', 'project_name'], as_index=False)
               .last()[['workstream_name', 'project_name', 'current_status']]
     )
@@ -1008,7 +1008,7 @@ def get_workstream_rnd_summary(df: pd.DataFrame) -> pd.DataFrame:
 
     def build_row(group: pd.DataFrame) -> pd.Series:
         bullets = []
-        for _, r in group.sort_values('date').iterrows():
+        for _, r in group.sort_values('date', kind='stable').iterrows():
             text = r['rnd_explaination'] if r['rnd_explaination'].lower() not in ('', 'nan', 'none') else '—'
             status = f" ({r['current_status']})" if r['current_status'] else ''
             bullets.append(f"• {r['date']:%d %b} · {r['user_name']}: {text}{status}")

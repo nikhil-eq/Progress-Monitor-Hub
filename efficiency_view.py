@@ -160,7 +160,7 @@ def load_improvements() -> pd.DataFrame:
 
     cols = ['date', 'user_name', 'kind', 'helps', 'title', 'detail', 'gain', 'current_status', 'time_spent']
     out = pd.concat([lean[cols], rd[cols]], ignore_index=True)
-    return out.sort_values('date').reset_index(drop=True)
+    return out.sort_values('date', kind='stable').reset_index(drop=True)
 
 
 def _wrap(text: str, width: int = 60) -> str:

@@ -33,7 +33,7 @@ def get_project_journey(df: pd.DataFrame, workstream: str, project: str) -> pd.D
         (df['workstream_name'] == workstream) & (df['project_name'] == project)
     ].copy()
 
-    journey = journey.sort_values('date').reset_index(drop=True)
+    journey = journey.sort_values('date', kind='stable').reset_index(drop=True)
 
     # Flag any entry that returns to a stage the team had already moved
     # past (e.g. Peer Review -> back to Processing) as "rework", BEFORE
@@ -74,7 +74,7 @@ def build_journey_timeline_figure(daily: pd.DataFrame, status_colors: dict, bloc
     (aggregated with .any() in page_project_journey below), so it's safe
     to use directly here with bool(...).
     """
-    daily = daily.sort_values('date').reset_index(drop=True)
+    daily = daily.sort_values('date', kind='stable').reset_index(drop=True)
 
     active_dates = sorted(daily['date'].drop_duplicates().tolist())
     span_days = max((active_dates[-1] - active_dates[0]).days, 1)
@@ -241,7 +241,7 @@ def page_project_journey():
     total_days = journey['date'].dt.date.nunique()
     start_date = journey['date'].min().strftime('%d %b')   # dropped year — shorter
     end_date = journey['date'].max().strftime('%d %b')
-    latest_status = journey.sort_values('date').iloc[-1]['current_status']
+    latest_status = journey.sort_values('date', kind='stable').iloc[-1]['current_status']
 
     st.markdown("""
         <style>
@@ -296,7 +296,7 @@ def page_project_journey():
                )
     )
     daily['date'] = pd.to_datetime(daily['date']).dt.normalize()
-    daily = daily.sort_values('date')
+    daily = daily.sort_values('date', kind='stable')
 
     fig = build_journey_timeline_figure(daily, status_colors, blocked_color)
     st.plotly_chart(fig, use_container_width=True, key=f"journey_timeline_{workstream}_{project}")

@@ -62,7 +62,7 @@ def get_monthly_project_status(month_df: pd.DataFrame):
 
     # latest known status/activity per project this month, and who that was
     latest = (
-        month_df.sort_values('date')
+        month_df.sort_values('date', kind='stable')
                 .groupby(['workstream_name', 'project_name'], as_index=False)
                 .last()[['workstream_name', 'project_name', 'current_status', 'user_name', 'date']]
                 .rename(columns={'user_name': 'last_worked_by', 'date': 'last_activity_date'})
@@ -82,7 +82,7 @@ def get_monthly_project_status(month_df: pd.DataFrame):
     completed_rows = completable[completable['current_status'].str.lower() == 'completed']
     if not completed_rows.empty:
         completed_latest = (
-            completed_rows.sort_values('date')
+            completed_rows.sort_values('date', kind='stable')
                           .groupby(['workstream_name', 'project_name'], as_index=False)
                           .last()[['workstream_name', 'project_name', 'user_name', 'date']]
                           .rename(columns={'user_name': 'completed_by', 'date': 'completed_date'})

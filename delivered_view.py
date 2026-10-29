@@ -110,7 +110,7 @@ def load_workstream_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
 
     # most recent completed-and-eligible dated entry per project
     last_completion = (
-        completed_rows.sort_values('date')
+        completed_rows.sort_values('date', kind='stable')
                        .groupby(['workstream_name', 'project_name'], as_index=False)
                        .last()[['workstream_name', 'project_name', 'date']]
     )
