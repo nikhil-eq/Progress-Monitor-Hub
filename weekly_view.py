@@ -865,11 +865,27 @@ def get_workstream_ops_summary(df: pd.DataFrame) -> pd.DataFrame:
         for key in zip(project_status['display_workstream'], project_status['project_name'])
     ]
 
+    # projects with any entry flagged as rework get a "(reworked)" tag in All Projects
+    if 'is_rework' not in scoped.columns:
+        scoped['is_rework'] = ''
+    reworked_keys = set(
+        scoped.loc[scoped['is_rework'].fillna('').astype(str).str.strip() != '',
+                   ['display_workstream', 'project_name']]
+              .itertuples(index=False, name=None)
+    )
+    project_status['reworked'] = [
+        key in reworked_keys
+        for key in zip(project_status['display_workstream'], project_status['project_name'])
+    ]
+
     def build_row(group: pd.DataFrame) -> pd.Series:
         completed = group[group['current_status'] == 'completed']
         in_progress = group[group['current_status'] != 'completed'].sort_values('project_name')
 
-        all_names = "\n".join(f"• {n}" for n in sorted(group['project_name']))
+        all_names = "\n".join(
+            f"• {n} (reworked)" if r else f"• {n}"
+            for n, r in sorted(zip(group['project_name'], group['reworked']))
+        )
 
         # one bullet per pending project, in the same order as in_progress_projects
         def bullets(values):
@@ -1350,40 +1366,31 @@ def page2():
     #    box on their own entry would incorrectly flag every other
     #    teammate's rows for the same project too.
     #
-    #    'is_rework' is a STRING column — '', 'GC - Triggered', or
-    #    'EQ - Triggered' — never a bool. Every check below compares it
-    #    explicitly rather than using it directly as a boolean mask. ──
+    #    'is_rework' is a STRING column — '' or the rework trigger
+    #    (e.g. 'Invalid Input Files', 'EQ - Oversight') — never a bool.
+    #    The label shows the actual trigger(s). ──
     rework_flags_all = compute_rework_flags(df)[
         ['user_name', 'workstream_name', 'project_name', 'date', 'is_rework']
     ]
+    reworked = rework_flags_all[rework_flags_all['is_rework'] != '']
+    keys = ['user_name', 'workstream_name', 'project_name']
 
-    this_week_mask = (
-        rework_flags_all['is_rework'].isin(["GC - Triggered", "EQ - Triggered"])
-        & rework_flags_all['date'].isin(week_df['date'])
-    )
-    ever_mask = rework_flags_all['is_rework'] != ''
+    def causes_by_key(frame):
+        return {
+            k: ', '.join(dict.fromkeys(g.sort_values('date')['is_rework']))
+            for k, g in frame.groupby(keys)
+        }
 
-    reworked_this_week_keys = set(
-        zip(
-            rework_flags_all.loc[this_week_mask, 'user_name'],
-            rework_flags_all.loc[this_week_mask, 'workstream_name'],
-            rework_flags_all.loc[this_week_mask, 'project_name'],
-        )
-    )
-    ever_reworked_keys = set(
-        zip(
-            rework_flags_all.loc[ever_mask, 'user_name'],
-            rework_flags_all.loc[ever_mask, 'workstream_name'],
-            rework_flags_all.loc[ever_mask, 'project_name'],
-        )
-    )
+    in_week = reworked['date'].between(current_week, current_week + pd.Timedelta(days=6))
+    causes_this_week = causes_by_key(reworked[in_week])
+    causes_ever = causes_by_key(reworked)
 
     def rework_label(row):
         key = (row['user_name'], row['workstream_name'], row['project_name'])
-        if key in reworked_this_week_keys:
-            return '⚠️ This week'
-        elif key in ever_reworked_keys:
-            return '↩️ Previously'
+        if key in causes_this_week:
+            return f'⚠️ This week: {causes_this_week[key]}'
+        elif key in causes_ever:
+            return f'↩️ Previously: {causes_ever[key]}'
         return '—'
 
     if not result.empty:

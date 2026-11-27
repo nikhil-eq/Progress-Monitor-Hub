@@ -29,7 +29,19 @@ workstreams_list_delivery = [
     'Carbon Plus',
 ]
 
-REWORK_TRIGGERS = {'GC - Oversight', 'EQ - Oversight'}
+# Current options on the Daily Log form, plus 'GC - Oversight' from older entries.
+REWORK_TRIGGERS = {
+    'Invalid Input Files', 'Process Iteration', 'Tool Issues',
+    'Inconsistent Decisions', 'EQ - Oversight', 'GC - Oversight',
+}
+# Misspellings already saved in the sheet → the correct trigger.
+REWORK_ALIASES = {'Invali Input Files': 'Invalid Input Files'}
+
+
+def clean_rework(s: pd.Series) -> pd.Series:
+    """Normalise the 'is_rework' column to a known trigger, or '' if not rework."""
+    s = s.fillna('').astype(str).str.strip().replace(REWORK_ALIASES)
+    return s.where(s.isin(REWORK_TRIGGERS), '')
 
 
 def load_data() -> pd.DataFrame:
@@ -52,8 +64,7 @@ def load_data() -> pd.DataFrame:
 
 
     if 'is_rework' in df.columns:
-        df['is_rework'] = df['is_rework'].astype(str).str.strip()
-        df['is_rework'] = df['is_rework'].where(df['is_rework'].isin(REWORK_TRIGGERS), '')
+        df['is_rework'] = clean_rework(df['is_rework'])
     else:
         df['is_rework'] = ''
 
@@ -153,8 +164,7 @@ def compute_rework_flags(df: pd.DataFrame) -> pd.DataFrame:
 
     if 'is_rework' not in d.columns:
         d['is_rework'] = ''
-    d['is_rework'] = d['is_rework'].fillna('').astype(str).str.strip()
-    d['is_rework'] = d['is_rework'].where(d['is_rework'].isin(REWORK_TRIGGERS), '')
+    d['is_rework'] = clean_rework(d['is_rework'])
     return d
 
 
