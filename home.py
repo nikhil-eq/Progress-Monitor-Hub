@@ -36,8 +36,8 @@ from db import load_data, workstreams_list_delivery
 ALLOTTED_HOURS_PER_WEEK = 40     # same capacity weekly_view uses
 TREND_WEEKS = 10                 # weeks shown in the hours trend
 TEAM_LOOKBACK_DAYS = 56          # who counts as "on the team"
-OPEN_WINDOW_DAYS = 60            # open project touched within this = in flight
-QUIET_DAYS = 10                  # in flight + no entry for this long = "gone quiet"
+OPEN_WINDOW_DAYS = 1000            # open project touched within this = in flight
+QUIET_DAYS = 2                  # in flight + no entry for this long = "gone quiet"
 
 # Lifetime / monthly / lean figures come from admin-only pages. Flip to True
 # if you want everyone to see them on the home page.
@@ -140,15 +140,24 @@ def build_project_table(d: pd.DataFrame) -> pd.DataFrame:
          .rename(columns={'date': 'last_date', 'status': 'latest_status',
                           'stage': 'latest_stage', 'user_name': 'last_by'})
     )
-    eligible = p[(p['stage'].str.lower() != PEER_REVIEW) & (p['status'] == 'completed')]
+    work = p[p['stage'].str.lower() != PEER_REVIEW]
+    eligible = work[work['status'] == 'completed']
     done = (
         eligible.groupby(keys, sort=False).tail(1)[keys + ['date', 'user_name']]
                 .rename(columns={'date': 'completed_date', 'user_name': 'completed_by'})
     )
+    # A project reopened after completion (later non-peer-review entry that
+    # isn't Completed) counts as open again.
+    last_work = (
+        work.groupby(keys, sort=False).tail(1)[keys + ['status']]
+            .rename(columns={'status': 'last_work_status'})
+    )
     hours = p.groupby(keys, as_index=False)['time_spent'].sum().rename(columns={'time_spent': 'hours'})
 
-    t = latest.merge(done, on=keys, how='left').merge(hours, on=keys, how='left')
-    t['is_complete'] = t['completed_date'].notna()
+    t = (latest.merge(done, on=keys, how='left')
+               .merge(last_work, on=keys, how='left')
+               .merge(hours, on=keys, how='left'))
+    t['is_complete'] = t['completed_date'].notna() & (t['last_work_status'] == 'completed')
     return t
 
 
