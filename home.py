@@ -36,7 +36,7 @@ from db import load_data, workstreams_list_delivery
 ALLOTTED_HOURS_PER_WEEK = 40     # same capacity weekly_view uses
 TREND_WEEKS = 10                 # weeks shown in the hours trend
 TEAM_LOOKBACK_DAYS = 56          # who counts as "on the team"
-OPEN_WINDOW_DAYS = 1000            # open project touched within this = in flight
+OPEN_WINDOW_DAYS = 500        # open project touched within this = in flight
 QUIET_DAYS = 2                  # in flight + no entry for this long = "gone quiet"
 
 # Lifetime / monthly / lean figures come from admin-only pages. Flip to True
